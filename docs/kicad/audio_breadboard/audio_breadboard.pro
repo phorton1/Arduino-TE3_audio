@@ -1,4 +1,4 @@
-update=5/12/2024 5:34:53 AM
+update=5/13/2024 1:00:14 AM
 version=1
 last_client=pcbnew
 [general]
@@ -25,7 +25,7 @@ ERC_TestSimilarLabels=1
 [pcbnew]
 version=1
 PageLayoutDescrFile=
-LastNetListRead=audio_board.net
+LastNetListRead=audio_breadboard.net
 CopperLayerCount=2
 BoardThickness=1.6
 AllowMicroVias=0
@@ -74,7 +74,7 @@ OthersTextUpright=1
 SolderMaskClearance=0
 SolderMaskMinWidth=0
 SolderPasteClearance=0
-SolderPasteRatio=-0
+SolderPasteRatio=0
 [pcbnew/Layer.F.Cu]
 Name=F.Cu
 Type=0
