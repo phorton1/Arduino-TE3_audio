@@ -14,7 +14,7 @@
 #include <Audio.h>
 #include <Wire.h>
 #include <myDebug.h>
-#include "src/sgtl5000.h"
+#include "src/mySGTL5000.h"
 
 
 #define USB_SERIAL_PORT		Serial
@@ -85,7 +85,7 @@
 #endif
 
 
-SGTL5000 sgtl5000;
+mySGTL5000 sgtl5000;
 
 
 
@@ -124,13 +124,15 @@ void setup()
 	#endif
 
 	sgtl5000.enable();
-	sgtl5000.inputSelect(AUDIO_INPUT_LINEIN);
+	sgtl5000.setInput(AUDIO_INPUT_LINEIN);
+	sgtl5000.setDefaultGains();
+
 	sgtl5000.lineInLevel(4);
 
-	sgtl5000.unmuteLineout();
-	sgtl5000.unmuteHeadphone();
-	sgtl5000.volume(0.8); 		//headphone volume
-
+	sgtl5000.muteLineout(0);
+	sgtl5000.muteHeadphone(0);
+	sgtl5000.headphoneVolume(100);
+	
 	// mixer_l.gain(0,0.90);
 	// mixer_r.gain(0,0.90);
 	// mixer_l.gain(1,0.70);
