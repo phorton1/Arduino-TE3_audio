@@ -40,7 +40,7 @@
 
 
 #if WITH_MIDI_HOST
-	#include "midiHost.h"
+	#include "src/midiHost.h"
 #endif
 
 
