@@ -14,7 +14,7 @@
 #include <Audio.h>
 #include <Wire.h>
 #include <myDebug.h>
-#include "src/mySGTL5000.h"
+#include <teSGTL5000.h>
 
 
 #define USB_SERIAL_PORT		Serial
@@ -85,7 +85,7 @@
 #endif
 
 
-mySGTL5000 sgtl5000;
+SGTL5000 sgtl5000;
 
 
 
