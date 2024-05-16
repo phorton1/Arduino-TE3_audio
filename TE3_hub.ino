@@ -20,7 +20,7 @@
 #define USB_SERIAL_PORT		Serial
 #define MIDI_SERIAL_PORT	Serial1
 #define DEBUG_SERIAL_PORT	Serial3
-#define USE_DEBUG_PORT		MIDI_SERIAL_PORT
+#define USE_DEBUG_PORT		USB_SERIAL_PORT
 
 
 #define WITH_SERIAL3	1
@@ -125,24 +125,31 @@ void setup()
 
 	sgtl5000.enable();
 	sgtl5000.setInput(AUDIO_INPUT_LINEIN);
-	sgtl5000.setDefaultGains();
 
-	sgtl5000.lineInLevel(4);
-
-	sgtl5000.muteLineout(0);
-	sgtl5000.muteHeadphone(0);
-	sgtl5000.headphoneVolume(100);
+	#if 1
+		sgtl5000.setDefaultGains();
+	#else
+		sgtl5000.dispatchCC(SGTL_CC_SET_DEFAULT_GAINS,0);
+	#endif
+	
+	// sgtl5000.setLineInLevel(4);
+	// sgtl5000.setMuteLineOut(0);
+	// sgtl5000.setMuteHeadphone(0);
+	// sgtl5000.setHeadphoneVolume(100);
 	
 	// mixer_l.gain(0,0.90);
 	// mixer_r.gain(0,0.90);
 	// mixer_l.gain(1,0.70);
 	// mixer_r.gain(1,0.70);
 
-
 	#if WITH_MIDI_HOST
 		display(0,"initilizing midiHost",0);
 		midi_host.init();
 	#endif
+
+	// test automation
+	// sgtl5000.setEqBand(0,23);
+	// sgtl5000.setEqBand(1,0x5f);
 
 	
 	display(0,"TE3_hub.ino setup() finished",0);
@@ -156,7 +163,7 @@ void loop()
     static bool flash_on = 0;
     static uint32_t flash_last = 0;
     uint32_t now = millis();
-    if (now > flash_last + 250)
+    if (now > flash_last + 1000)
     {
         flash_last = now;
         flash_on = !flash_on;
@@ -215,6 +222,10 @@ void loop()
 	// for USB and rPi Audio processing?
 
 	delay(50);
+
+	// handle SGTL5000 eq automation
+
+	sgtl5000.loop();
 }
 
 
