@@ -10,59 +10,60 @@
 // #include "midiQueue.h"
 // #include "theSystem.h"
 
+#if WITH_MIDI_HOST
 
-USBHost myusb;
-midiHost midi_host;
-
-
-midiHost::midiHost() : MIDIDevice(myusb) {}
-
-void midiHost::init()
-{
-    myusb.begin();
-}
+    USBHost myusb;
+    midiHost midi_host;
 
 
+    midiHost::midiHost() : MIDIDevice(myusb) {}
 
-void midiHost::rx_data(const Transfer_t *transfer)
-    // made virtual in USBHost_t36.h
-{
-    uint32_t len = (transfer->length - ((transfer->qtd.token >> 16) & 0x7FFF)) >> 2;
-    if (len)
+    void midiHost::init()
     {
-        bool any = 0;
-        for (uint32_t i=0; i < len; i++)
-        {
-            uint32_t msg32 = rx_buffer[i];
-            if (msg32)
-            {
-                any = 1;
-                usb_midi_write_packed(msg32);
-
-                #if DEBUG_MIDI_HOST
-                    // debugging withink the irq DEFINITELY mucks things up
-                        display(0,"host:  0x%08x",msg32);
-                #endif
-
-                // Not implemented yet
-
-                // port comes in as 0x00 or 0x10
-                // we bump it to MIDI_PORT_HOST1 = 0x40 or
-                // MIDI_PORT_HOST2 = 0x50;
-
-                // enqueueMidi(false, MIDI_PORT_HOST1 | (msg32 & MIDI_PORT_NUM_MASK), msg32);
-
-            }
-        }
-
-        if (any)
-            usb_midi_flush_output();
+        myusb.begin();
     }
 
-    queue_Data_Transfer(rxpipe, rx_buffer, rx_size, this);
-}
 
 
+    void midiHost::rx_data(const Transfer_t *transfer)
+        // made virtual in USBHost_t36.h
+    {
+        uint32_t len = (transfer->length - ((transfer->qtd.token >> 16) & 0x7FFF)) >> 2;
+        if (len)
+        {
+            bool any = 0;
+            for (uint32_t i=0; i < len; i++)
+            {
+                uint32_t msg32 = rx_buffer[i];
+                if (msg32)
+                {
+                    any = 1;
+                    usb_midi_write_packed(msg32);
+
+                    #if DEBUG_MIDI_HOST
+                        // debugging withink the irq DEFINITELY mucks things up
+                            display(0,"host:  0x%08x",msg32);
+                    #endif
+
+                    // Not implemented yet
+
+                    // port comes in as 0x00 or 0x10
+                    // we bump it to MIDI_PORT_HOST1 = 0x40 or
+                    // MIDI_PORT_HOST2 = 0x50;
+
+                    // enqueueMidi(false, MIDI_PORT_HOST1 | (msg32 & MIDI_PORT_NUM_MASK), msg32);
+
+                }
+            }
+
+            if (any)
+                usb_midi_flush_output();
+        }
+
+        queue_Data_Transfer(rxpipe, rx_buffer, rx_size, this);
+    }
+
+#endif  // WITH_MIDI_HOST
 
 
 //-----------------------------------------------

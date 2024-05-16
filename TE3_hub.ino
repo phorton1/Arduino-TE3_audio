@@ -10,11 +10,11 @@
 //		Serial1 = Serial Midi Port 	(and/or debug output)
 //		Serial3 = Debug Serial Port
 
-
 #include <Audio.h>
 #include <Wire.h>
 #include <myDebug.h>
 #include <teSGTL5000.h>
+#include "src/midiHost.h"
 
 
 #define USB_SERIAL_PORT		Serial
@@ -23,7 +23,7 @@
 #define USE_DEBUG_PORT		USB_SERIAL_PORT
 
 
-#define WITH_SERIAL3	1
+#define WITH_SERIAL3	0
 	// must set this to use DEBUG_SERIAL_PORT for debugging
 
 #define TRIGGER_PIN		0		// 13
@@ -33,16 +33,13 @@
 
 #define TONE_SWEEP_TEST	0
 	// set to 1 to do simple autdio tone out test
-#define WITH_USB_AUDIO	1
+#define WITH_USB_AUDIO	0
 	// set to 1 to route audio from SGTL through the USB Audio IO
+#define WITH_MIXERS		0
+	// allows to monitor I2S_IN and mix it with USB_IN to I2S_OUT
 
-#define WITH_MIDI_HOST	1
-	// set to 1 to include my midiHost class
 
 
-#if WITH_MIDI_HOST
-	#include "src/midiHost.h"
-#endif
 
 
 
@@ -64,23 +61,53 @@
 	AudioOutputI2S      i2s_out;
 
 	#if WITH_USB_AUDIO
+
+		// WITH_USB_AUDO has an option of having mixers
+		// the default is to route I2S_IN->USB_OUT .. USB_IN->IS2_OUT
+		// but if the teensy is plugged into the laptop, no sound will
+		// be heard because there is no connection between USB_OUT
+		// and USB_IN on the laptop.
+		//
+		// Therefore, the option is to have a set of mixers that
+		// mix allow the ability to "monitor" the I2S_IN directly
+		// to I2S_OUT, and to mix whatever is coming over the USB_OUT
+		// in with that.
+
 		AudioInputUSB       usb_in;
 		AudioOutputUSB      usb_out;
 
-		AudioConnection     c1(i2s_in, 0, usb_out, 0);
-		AudioConnection     c2(i2s_in, 1, usb_out, 1);
-		AudioConnection     c7(usb_in, 0, i2s_out, 0);
-		AudioConnection     c8(usb_in, 1, i2s_out, 1);
+		#if WITH_MIXERS
+
+			AudioMixer4			mixer_l;
+			AudioMixer4			mixer_r;
+
+			AudioConnection     c1(i2s_in, 	0, usb_out, 0);
+			AudioConnection     c2(i2s_in, 	0, mixer_l, 0);
+			AudioConnection     c3(usb_in, 	0, mixer_l, 1);
+			AudioConnection     c4(mixer_l, 0, i2s_out, 0);
+
+			AudioConnection     c5(i2s_in, 	1, usb_out, 1);
+			AudioConnection     c6(i2s_in, 	1, mixer_r, 0);
+			AudioConnection     c7(usb_in, 	1, mixer_r, 1);
+			AudioConnection     c8(mixer_l, 0, i2s_out, 1);
+
+		#else
+			AudioConnection     c1(i2s_in, 0, usb_out, 0);
+			AudioConnection     c2(i2s_in, 1, usb_out, 1);
+			AudioConnection     c7(usb_in, 0, i2s_out, 0);
+			AudioConnection     c8(usb_in, 1, i2s_out, 1);
+		#endif
 
 	#else
+
+		// the default routing has no mixers
+		// and just connects I2S_IN->I2S_OUT
 
 		AudioConnection     c1(i2s_in, 0, i2s_out, 0);
 		AudioConnection     c2(i2s_in, 1, i2s_out, 1);
 
 	#endif
 
-	// AudioMixer4			mixer_l;
-	// AudioMixer4			mixer_r;
 
 #endif
 
@@ -123,35 +150,128 @@ void setup()
 		digitalWrite(TRIGGER_PIN,1);
 	#endif
 
-	sgtl5000.enable();
-	sgtl5000.setInput(AUDIO_INPUT_LINEIN);
+	// Note: the artisan Pifi seems to put out about the same signal
+	// via either the HP jack or the line out plugs.
 
+	sgtl5000.enable();
+	sgtl5000.setInput(SGTL_INPUT_LINEIN);		// line_in == 0
+
+	// Chain from left to right
+
+	#if 0
+		sgtl5000.setHeadphoneSelect(0);
+			// bypass routes LINE_IN directly to HP_OUT
+			// without going through the LINE_IN (ANALOG_IN) amplifier
+			// and is not affected by any other settings except
+			// setHeadphoneVolume() and setMuteHeadphone().
+			// This even includes setInput(), which is ignored
+			// in bypass mode.
+	#endif
+
+	#if 0
+		sgtl5000.setInput(SGTL_INPUT_MIC);		// mic == 1
+			// The input selection is the first thing in the
+			// chain.  I have not tested the mic input at this
+			// point.
+		sgtl5000.setMicGain(1);		// 0..3=max 40db
+			// even without anything connected I get definite
+			// noise at 40db max gain.
+	#endif
+
+	#if 0	// these are now the defaults in setDefaultGains()
+
+		sgtl5000.setLineInLevel(7);		// max 15
+			// I definitely have the sense correct.
+			// 7 or 8 seem like good working defaults
+		sgtl5000.setHeadphoneVolume(97);	// max 127
+			// Note that if we mute before setHeadphoneVolume(>0),
+			// it will turn off the mute.  Driving the little
+			// desktop speakers is not the best ultimate test,
+			// but at full volume on those, setHeadphoneVolume(<=80)
+			// seems to be necessary.  With them turned down, a
+			// default volume of 97 seems reasonable.
+		sgtl5000.setLineOutLevel(13);	// 0..18 (test max 31)
+			// I have the sense correct.
+			// It does not affect the sound as much as I expected.
+			// I grabbed 13 out of a hat.
+		sgtl5000.setMuteLineOut(0);
+		sgtl5000.setMuteHeadphone(0);
+			// Once again, setMuteHeadphone(1) would need
+			// to be called AFTER setHeadphoneVolume(>=0).
+	#endif
+	
 	#if 1
 		sgtl5000.setDefaultGains();
 	#else
 		sgtl5000.dispatchCC(SGTL_CC_SET_DEFAULT_GAINS,0);
 	#endif
+
+	// try various DAP effects
+
+	#if 1
+		sgtl5000.setMuteHeadphone(1);
+		sgtl5000.setDapEnable(DAP_ENABLE_POST);
+
+		#if 1
+			sgtl5000.setSurroundEnable(SURROUND_STEREO);
+			sgtl5000.setSurroundWidth(5);
+		#endif
+
+		#if 0
+			// I'm not sure how this works
+			sgtl5000.setEnableBassEnhance(1);			// 0..1
+			sgtl5000.setEnableBassEnhanceCutoff(0);		// 0..1
+			sgtl5000.setBassEnhanceCutoff(3);			// 0..6
+				// 0 =  80Hz
+				// 1 = 100Hz
+				// 2 = 125Hz
+				// 3 = 150Hz
+				// 4 = 175Hz
+				// 5 = 200Hz
+				// 6 = 225Hz
+			sgtl5000.setBassEnhanceBoost(0x40);			// 0..0x7f
+				// sets amount of harmonics boost.
+				// default = 0x60
+			sgtl5000.setBassEnhanceVolume(50);		// 0..0x3f
+				// default = 58 on my scale
+				// blows out speakers
+		#endif
+
+		#if 0
+			sgtl5000.setEqSelect(EQ_GRAPHIC_EQ_5CH);
+
+			// 47 (0x2f) = 0 db; max=95 (0x5F)
+
+			sgtl5000.setEqBand(EQ_BASS_BAND0,   60);
+			sgtl5000.setEqBand(EQ_BAND1,        47);
+			sgtl5000.setEqBand(EQ_BAND1,        47);
+			sgtl5000.setEqBand(EQ_BAND1,        47);
+			sgtl5000.setEqBand(EQ_TREBLE_BAND4, 42);
+		#endif
+
+
+		sgtl5000.setMuteHeadphone(0);
+	#endif
+
 	
-	// sgtl5000.setLineInLevel(4);
-	// sgtl5000.setMuteLineOut(0);
-	// sgtl5000.setMuteHeadphone(0);
-	// sgtl5000.setHeadphoneVolume(100);
+	sgtl5000.dumpCCValues("after my init");
+
+	#if WITH_USB_AUDIO
+		#if WITH_MIXERS
+			mixer_l.gain(0, 1.0);
+			mixer_l.gain(1, 1.0);
+			mixer_r.gain(0, 1.0);
+			mixer_r.gain(1, 1.0);
+		#endif
+	#endif
 	
-	// mixer_l.gain(0,0.90);
-	// mixer_r.gain(0,0.90);
-	// mixer_l.gain(1,0.70);
-	// mixer_r.gain(1,0.70);
 
 	#if WITH_MIDI_HOST
+		// defined in midiHost.h
 		display(0,"initilizing midiHost",0);
 		midi_host.init();
 	#endif
 
-	// test automation
-	// sgtl5000.setEqBand(0,23);
-	// sgtl5000.setEqBand(1,0x5f);
-
-	
 	display(0,"TE3_hub.ino setup() finished",0);
 
 }
@@ -169,7 +289,7 @@ void loop()
         flash_on = !flash_on;
         digitalWrite(FLASH_PIN,flash_on);
 
-		#if 1
+		#if 0
 			static int counter = 0;
 			display(0,"loop(%d)",counter++);
 			// Serial1.print("counter=");
