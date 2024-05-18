@@ -8,8 +8,6 @@
     #include <Arduino.h>
     #include <USBHost_t36.h>
 
-
-
     class midiHost : public MIDIDevice
         // requires slightly modified USBHost_t36.h
     {

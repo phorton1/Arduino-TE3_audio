@@ -22,6 +22,9 @@
 #define DEBUG_SERIAL_PORT	Serial3
 #define USE_DEBUG_PORT		USB_SERIAL_PORT
 
+#define SPOOF_FTP  0
+
+
 
 #define WITH_SERIAL3	0
 	// must set this to use DEBUG_SERIAL_PORT for debugging
@@ -114,10 +117,25 @@
 
 SGTL5000 sgtl5000;
 
+extern "C" {
+    extern void my_usb_init();          	// in usb_dev.c
+    extern void setFTPDescriptors();    	// _usbNames.c
+	extern const char *getUSBSerialNum();	// _usbNames.c
+}
+
+
+// #include "src/_usb.h"
 
 
 void setup()
 {
+	#if SPOOF_FTP
+		setFTPDescriptors();
+    #endif
+
+	my_usb_init();
+    delay(1000);
+
 	Serial.begin(115200);
 	delay(100);
 	Serial1.begin(115200);
@@ -202,13 +220,13 @@ void setup()
 	
 	#if 1
 		sgtl5000.setDefaultGains();
-	#else
-		sgtl5000.dispatchCC(SGTL_CC_SET_DEFAULT_GAINS,0);
+	#elif 0
+		gtl5000.dispatchCC(SGTL_CC_SET_DEFAULT_GAINS,0);
 	#endif
 
 	// try various DAP effects
 
-	#if 1
+	#if 0
 		sgtl5000.setMuteHeadphone(1);
 		sgtl5000.setDapEnable(DAP_ENABLE_POST);
 
@@ -341,11 +359,23 @@ void loop()
 	//------------------------------------------------------
 	// for USB and rPi Audio processing?
 
-	delay(50);
+	#if 0
+		delay(50);
+	#endif
 
-	// handle SGTL5000 eq automation
+	#if 0
+		// handle SGTL5000 eq automation
+		sgtl5000.loop();
+	#endif
 
-	sgtl5000.loop();
+	#if WITH_MIDI_HOST && SPOOF_FTP
+		uint32_t msg32 = usb_midi_read_message();  // read from device
+		if (msg32)
+		{
+			// display(0,"midi(0x%08x",msg32);
+			midi_host.write_packed(msg32);
+		}
+	#endif
 }
 
 
