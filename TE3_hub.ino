@@ -431,10 +431,15 @@ void loop()
 	//-----------------------------
 	// interesting possibility to set levels from iPad
 
-	#if 0	// vestigal code to set SGTL5000 volume from USB device
-		float vol = usb_in.volume();  		// read PC volume setting
-		display(0,"USB VOL=(%0.3f)",vol);
-		sgtl5000.volume(vol); 				// set headphone volume
+	#if WITH_USB_AUDIO	// vestigal code to set SGTL5000 volume from USB device
+		float vol_float = usb_in.volume();  		// read PC volume setting
+		uint8_t vol = vol_float * 127;
+		uint8_t left = sgtl5000.getHeadphoneVolumeLeft();
+		if (vol != left)
+		{
+			display(0,"USB VOL(%0.3f)=%d left=%d",vol_float,vol,left);
+			sgtl5000.setHeadphoneVolume(vol);
+		}
 	#endif
 
 
