@@ -1,6 +1,6 @@
 #pragma once
 
-#define WITH_MIDI_HOST  0
+#define WITH_MIDI_HOST  1
     
 
 #if WITH_MIDI_HOST
