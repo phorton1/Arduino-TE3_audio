@@ -2,13 +2,6 @@
 // TE3_hub.ino
 //-------------------------------------------------------
 // USB Serial, Audio, and MIDI device with USB Host
-// Does not yet interface to rPi via I2S.
-//
-// Serial Ports
-//
-//		Serial = USB Serial Port	(and/or debug output)
-//		Serial1 = Serial Midi Port 	(and/or debug output)
-//		Serial3 = Debug Serial Port
 
 #include <Audio.h>
 #include <Wire.h>
@@ -18,235 +11,224 @@
 #include "src/midiHost.h"
 
 
+#define	dbg_audio	0
+
 #define USB_SERIAL_PORT			Serial
 #define MIDI_SERIAL_PORT		Serial1
-#define ALT_SERIAL_PORT			0	// Serial3
 
+
+//---------------------------------------
+// compile options
+//---------------------------------------
 
 #define DEBUG_TO_USB_SERIAL		0
 #define DEBUG_TO_MIDI_SERIAL	1
-#define DEBUG_TO_ALT_SERIAL		2
-
 #define HOW_DEBUG_OUTPUT		DEBUG_TO_MIDI_SERIAL
-
-
-
-#define USE_DEBUG_PORT			USB_SERIAL_PORT
-#define USE_SERIAL_MIDI_PORT	MIDI_SERIAL_PORT
-
+	// The default is that debugging goes to the MIDI Serial port
+	// (TE3) and is forwarded to the laptop from there.  If I need
+	// to hook up directly to the TE3_hub, it means it's connected
+	// to the laptop, and I can recompile if I wanna change this.
 
 #define SPOOF_FTP  0
-	// requires WITH_MIDI_HOST in midiHost.h
-	// however, initial tests reveal that an active midiHost
-	// causes severely noticable buzz on the teensy audio shield,
-	// which I *doubt* is fixable. Might be important enough to
-	// try various methods of isolating the SGTL5000, but more
-	// important are basic audio tests with the guitar, USB Audio
-	// and the Looper, so this issue is on hold.
+	// requires WITH_MIDI_HOST in midiHost.h (which is always on)
+	// This works and has been tested, but I know more than I want
+	// to know about the FTP already, and I'm probably not gonna
+	// implement midi monitoring in TE3, much less TE3_hub.
+	// If I need to, I can recompile and insert custom debugging.
 	//
-	// Current plan is to go back to a teensy 4.1 for TE3, and
-	// try to ram the HOST via Serial Midi to the TE3_hub fast,
-	// and quiet, enough for usage.
+	// NOTE REGARDINg midiHost NOISE
+	//
+	// Initial tests revealed that an active midiHost causes noticable
+	// noise on the teensy audio shield. I thought it was a severe
+	// problem, requiring an architectural change, but after i hooked
+	// the guitar up, got the SGTL5000 levels adjusted, through the PA,
+	// I decided it wasn't bad enough to worry about. So the plan is,
+	// at this time, to assume the FTP, if any, will be in the midiHost
+	// port, and no provision will be coded for having it on an outside
+	// hub, or creating a midiHost in the TE3 part of the system.
 
-
-
-
-#define TRIGGER_PIN		0		// 13
-	// set this to a pin to trigger logic analyzer
 #define FLASH_PIN		13
-	// set this to a pin to flash during loop
+	// Set this to a pin to flash a heartbeat during loop()
+	// The teensy4.x onboard LED is pin 13
 
-
-
+#define USE_TEENSY_QUAD		0
+	// Deployment setting will be 1.  Otherwise, for early
+	// testing I allowed for using a regular i2s device.
+#define SINE_WAVE_TO_USB	0
+	// compile time option to send a sine wave to the iPad
+	
 //-------------------------------------------
 // audio system setup
 //-------------------------------------------
+// All audio system components are statically constructed.
+// They are connected during setup().
 
-#define TONE_SWEEP_TEST	0
-	// set to 1 to do simple autdio tone out test
-#define WITH_USB_AUDIO	0
-	// set to 1 to route audio from SGTL through the USB Audio IO
-#define WITH_MIXERS		0
-	// allows to monitor I2S_IN and mix it with USB_IN to I2S_OUT
+#define MAX_CONNECTIONS		16
 
+#define MIX_CHANNEL_IN		0		// the original i2s_in (already in MAIN if !USE_TEENSY_QUAD)
+#define MIX_CHANNEL_USB		1		// the sound returned from the iPad
+#define MIX_CHANNEL_MAIN  	2		// THE FINAL RESULT
+#define MIX_CHANNEL_SINE	3		// A sine wave that should always be audible
+
+#define DEFAULT_VOLUME_IN		1.0
+#define DEFAULT_VOLUME_USB		1.0
+#define DEFAULT_VOLUME_MAIN		1.0
+#define DEFAULT_VOLUME_SINE		0.8
+
+// sine wave setup
+
+#define FREQ_SINE1			330
+#define FREQ_SINE2			440
+#define SINE_TOGGLE_TIME	1000			// ms
+
+// run time options
+// if any are set to 1, setNewConnection() will be called from setup()
+
+bool monitorInput = 0;
+	// if 1, MIX_CHANNEL_IN will be hooked up
+	// will be redundant to MAIN if !USE_TEENSY_QUAD
+bool monitorUSB = 1;
+	// if 1, MIX_CHANNEL_USB will be hooked up
+bool monitorSine  = 0;
+	// if 1, MIX_CHANNEL_SINE will be hooked up
+bool lastMonitorInput = 0;
+bool lastMonitorUSB = 0;
+bool lastMonitorSine = 0;
+	// only set volumes on state changes
+
+
+// ALL AUDIO SYSTEM COMPONENTS ARE STATICALLY INITALIZED
 
 SGTL5000 sgtl5000;
 
-
-#if TONE_SWEEP_TEST
-
-	AudioSynthToneSweep tone_sweep;
-	AudioOutputI2S    	i2s_out;
-	AudioConnection 	c1(tone_sweep, 0, i2s_out, 0);
-	AudioConnection 	c2(tone_sweep, 0, i2s_out, 1);
-
-	float t_ampx = 0.8;
-	int t_lox = 10;
-	int t_hix = 4000;
-	float t_timex = 10;
-
-	void toneSweepTest()
-	{
-		if (!tone_sweep.play(t_ampx,t_lox,t_hix,t_timex))
-		{
-			my_error("tone_sweep.play() failed",0);
-			delay(10000);
-			return;
-		}
-		while (tone_sweep.isPlaying());
-	}
-
+#if WITH_TEENSY_QUAD
+	AudioInputI2SQuad       i2s_in;
+	AudioOutputI2SQuad      i2s_out;
 #else
+	AudioInputI2S  			i2s_in;
+	AudioOutputI2S  		i2s_out;
+#endif
 
-	AudioInputI2S       i2s_in;
-	AudioOutputI2S      i2s_out;
+AudioInputUSB   		usb_in;
+AudioOutputUSB  		usb_out;
+AudioSynthWaveformSine  sine1;
+AudioSynthWaveformSine  sine2;
+AudioMixer4				mixer_L;
+AudioMixer4				mixer_R;
 
-	#if WITH_USB_AUDIO
+// STATICALLY INITIALIZED CONNECTIONS
 
-		// WITH_USB_AUDO has an option of having mixers
-		// the default is to route I2S_IN->USB_OUT .. USB_IN->IS2_OUT
-		// but if the teensy is plugged into the laptop, no sound will
-		// be heard because there is no connection between USB_OUT
-		// and USB_IN on the laptop.
-		//
-		// Therefore, the option is to have a set of mixers that
-		// mix allow the ability to "monitor" the I2S_IN directly
-		// to I2S_OUT, and to mix whatever is coming over the USB_OUT
-		// in with that.
+#if SINE_WAVE_TO_USB
+	AudioConnection c_in1(sine1,  0, usb_out, 0);					// sine wave --> USB_out
+	AudioConnection c_in2(sine2,  0, usb_out, 1);
+#else	// normal setup
+	AudioConnection c_in1(i2s_in, 0, usb_out, 0);					// STGTL5000 --> USB_out
+	AudioConnection c_in2(i2s_in, 1, usb_out, 1);
+#endif
 
-		AudioInputUSB       usb_in;
-		AudioOutputUSB      usb_out;
+#if WITH_TEENSY_QUAD
+	AudioConnection c_q1(usb_in, 0, i2s_out, 2);					// USB_in --> Looper
+	AudioConnection c_q2(usb_in, 1, i2s_out, 3);
+	AudioConnection c_q3(i2s_in, 2, mixer_L, MIX_CHANNEL_MAIN);		// Looper --> mixer
+	AudioConnection c_q4(i2s_in, 3, mixer_R, MIX_CHANNEL_MAIN);
+#else
+	AudioConnection c_s1(i2s_in, 0, mixer_L, MIX_CHANNEL_MAIN);		// SGTL5000 --> mixer
+	AudioConnection c_s2(i2s_in, 1, mixer_R, MIX_CHANNEL_MAIN);
+#endif
 
-		#if WITH_MIXERS
-
-			AudioMixer4			mixer_l;
-			AudioMixer4			mixer_r;
-
-			AudioConnection     c1(i2s_in, 	0, usb_out, 0);
-			AudioConnection     c2(i2s_in, 	0, mixer_l, 0);
-			AudioConnection     c3(usb_in, 	0, mixer_l, 1);
-			AudioConnection     c4(mixer_l, 0, i2s_out, 0);
-
-			AudioConnection     c5(i2s_in, 	1, usb_out, 1);
-			AudioConnection     c6(i2s_in, 	1, mixer_r, 0);
-			AudioConnection     c7(usb_in, 	1, mixer_r, 1);
-			AudioConnection     c8(mixer_l, 0, i2s_out, 1);
-
-		#else
-			AudioConnection     c1(i2s_in, 0, usb_out, 0);
-			AudioConnection     c2(i2s_in, 1, usb_out, 1);
-			AudioConnection     c7(usb_in, 0, i2s_out, 0);
-			AudioConnection     c8(usb_in, 1, i2s_out, 1);
-		#endif
-
-	#else
-
-		// the default routing has no mixers
-		// and just connects I2S_IN->I2S_OUT
-
-		AudioConnection     c1(i2s_in, 0, i2s_out, 0);
-		AudioConnection     c2(i2s_in, 1, i2s_out, 1);
-
-	#endif	// !WITH_USB_AUDIO
-
-#endif	// !TONE_SWEEP_TEST
+AudioConnection c_out1(mixer_L, 0, i2s_out, 0);						// mixer --> SGTL5000
+AudioConnection c_out2(mixer_R, 0, i2s_out, 1);
 
 
-void audioExperiments()
+// dynamic connections
+
+AudioConnection c_in_L;
+AudioConnection c_in_R;
+AudioConnection c_usb_L;
+AudioConnection c_usb_R;
+AudioConnection c_sine_L;
+AudioConnection c_sine_R;
+
+bool sine_toggle = 0;
+uint32_t next_sine_time = 0;
+
+
+//----------------------
+// setNewConnection
+//----------------------
+
+void setNewConnection()
 {
-	// Chain from left to right
+	display(dbg_audio,"setNewConnection() old/new input(%d,%d) USB(%d,%d) sine(%d,%d) ",
+		lastMonitorInput,
+		monitorInput,
+		lastMonitorUSB,
+		monitorUSB,
+		lastMonitorSine,
+		monitorSine);
+	proc_entry();
 
-	#if 0
-		sgtl5000.setHeadphoneSelect(0);
-			// bypass routes LINE_IN directly to HP_OUT
-			// without going through the LINE_IN (ANALOG_IN) amplifier
-			// and is not affected by any other settings except
-			// setHeadphoneVolume() and setMuteHeadphone().
-			// This even includes setInput(), which is ignored
-			// in bypass mode.
-	#endif
-
-	#if 0
-		sgtl5000.setInput(SGTL_INPUT_MIC);		// mic == 1
-			// The input selection is the first thing in the
-			// chain.  I have not tested the mic input at this
-			// point.
-		sgtl5000.setMicGain(1);		// 0..3=max 40db
-			// even without anything connected I get definite
-			// noise at 40db max gain.
-	#endif
-
-	#if 0	// these are now the defaults in setDefaultGains()
-
-		sgtl5000.setLineInLevel(7);		// max 15
-			// I definitely have the sense correct.
-			// 7 or 8 seem like good working defaults
-		sgtl5000.setHeadphoneVolume(97);	// max 127
-			// Note that if we mute before setHeadphoneVolume(>0),
-			// it will turn off the mute.  Driving the little
-			// desktop speakers is not the best ultimate test,
-			// but at full volume on those, setHeadphoneVolume(<=80)
-			// seems to be necessary.  With them turned down, a
-			// default volume of 97 seems reasonable.
-		sgtl5000.setLineOutLevel(13);	// 0..18 (test max 31)
-			// I have the sense correct.
-			// It does not affect the sound as much as I expected.
-			// I grabbed 13 out of a hat.
-		sgtl5000.setMuteLineOut(0);
-		sgtl5000.setMuteHeadphone(0);
-			// Once again, setMuteHeadphone(1) would need
-			// to be called AFTER setHeadphoneVolume(>=0).
-	#endif
-	
-	// try various DAP effects
-
-	#if 0
-		sgtl5000.setMuteHeadphone(1);
-		sgtl5000.setDapEnable(DAP_ENABLE_POST);
-
-		#if 1
-			sgtl5000.setSurroundEnable(SURROUND_STEREO);
-			sgtl5000.setSurroundWidth(5);
-		#endif
-
-		#if 0
-			// I'm not sure how this works
-			sgtl5000.setEnableBassEnhance(1);			// 0..1
-			sgtl5000.setEnableBassEnhanceCutoff(0);		// 0..1
-			sgtl5000.setBassEnhanceCutoff(3);			// 0..6
-				// 0 =  80Hz
-				// 1 = 100Hz
-				// 2 = 125Hz
-				// 3 = 150Hz
-				// 4 = 175Hz
-				// 5 = 200Hz
-				// 6 = 225Hz
-			sgtl5000.setBassEnhanceBoost(0x40);			// 0..0x7f
-				// sets amount of harmonics boost.
-				// default = 0x60
-			sgtl5000.setBassEnhanceVolume(50);		// 0..0x3f
-				// default = 58 on my scale
-				// blows out speakers
-		#endif
-
-		#if 0
-			sgtl5000.setEqSelect(EQ_GRAPHIC_EQ_5CH);
-
-			// 47 (0x2f) = 0 db; max=95 (0x5F)
-
-			sgtl5000.setEqBand(EQ_BASS_BAND0,   60);
-			sgtl5000.setEqBand(EQ_BAND1,        47);
-			sgtl5000.setEqBand(EQ_BAND1,        47);
-			sgtl5000.setEqBand(EQ_BAND1,        47);
-			sgtl5000.setEqBand(EQ_TREBLE_BAND4, 42);
-		#endif
-
-
-		sgtl5000.setMuteHeadphone(0);
-	#endif
-
+	if (lastMonitorInput != monitorInput)
+	{
+		lastMonitorInput = monitorInput;
+		if (monitorInput)
+		{
+			display(0,"connecting monitorInput",0);
+			c_in_L.connect(i2s_in, 0, mixer_L, MIX_CHANNEL_IN);
+			c_in_R.connect(i2s_in, 1, mixer_R, MIX_CHANNEL_IN);
+			mixer_L.gain(MIX_CHANNEL_IN, DEFAULT_VOLUME_IN);
+			mixer_R.gain(MIX_CHANNEL_IN, DEFAULT_VOLUME_IN);
+		}
+		else
+		{
+			display(0,"disconnecting monitorInput",0);
+			c_in_L.disconnect();
+			c_in_R.disconnect();
+			mixer_L.gain(MIX_CHANNEL_IN, 0.0);
+			mixer_R.gain(MIX_CHANNEL_IN, 0.0);
+		}
+	}
+	if (lastMonitorUSB != monitorUSB)
+	{
+		lastMonitorInput = monitorUSB;
+		if (monitorUSB)
+		{
+			display(0,"connecting monitorUSB",0);
+			c_usb_L.connect(usb_in, 0, mixer_L, MIX_CHANNEL_USB);
+			c_usb_R.connect(usb_in, 1, mixer_R, MIX_CHANNEL_USB);
+			mixer_L.gain(MIX_CHANNEL_USB, DEFAULT_VOLUME_USB);
+			mixer_R.gain(MIX_CHANNEL_USB, DEFAULT_VOLUME_USB);
+		}
+		else
+		{
+			display(0,"disconnecting monitorUSB",0);
+			c_usb_L.disconnect();
+			c_usb_R.disconnect();
+			mixer_L.gain(MIX_CHANNEL_USB, 0.0);
+			mixer_R.gain(MIX_CHANNEL_USB, 0.0);
+		}
+	}
+	if (lastMonitorSine != monitorSine)
+	{
+		lastMonitorSine = monitorSine;
+		if (monitorSine)
+		{
+			display(0,"connecting monitorSine",0);
+			c_sine_L.connect(sine1, 0, mixer_L, MIX_CHANNEL_SINE);
+			c_sine_R.connect(sine2, 0, mixer_R, MIX_CHANNEL_SINE);
+			mixer_L.gain(MIX_CHANNEL_SINE, DEFAULT_VOLUME_SINE);
+			mixer_R.gain(MIX_CHANNEL_SINE, DEFAULT_VOLUME_SINE);
+		}
+		else
+		{
+			display(0,"disconnecting monitorSine",0);
+			c_sine_L.disconnect();
+			c_sine_R.disconnect();
+			mixer_L.gain(MIX_CHANNEL_SINE, 0.0);
+			mixer_R.gain(MIX_CHANNEL_SINE, 0.0);
+		}
+	}
 }
-
 
 
 
@@ -262,7 +244,6 @@ extern "C" {
 }
 
 
-
 void setup()
 {
 	#if FLASH_PIN
@@ -271,9 +252,8 @@ void setup()
 	#endif
 
 	//-----------------------------------------
-	// initialize hardware serial ports
+	// initialize MIDI_SERIAL_PORT
 	//-----------------------------------------
-	// most important being the MIDI_SERIAL_PORT
 
 	setColorString(COLOR_CONST_DEFAULT, "\033[94m");	// bright blue
         // TE3_hub's normal display color is bright blue
@@ -281,21 +261,11 @@ void setup()
         // Looper's normal display color, is cyan, I think
 
 	MIDI_SERIAL_PORT.begin(115200);		// Serial1
-	delay(100);
 	#if HOW_DEBUG_OUTPUT == DEBUG_TO_MIDI_SERIAL
+		delay(500);
 		dbgSerial = &MIDI_SERIAL_PORT;
 		display(0,"TE3_hub.ino setup() started on MIDI_SERIAL_PORT",0);
 	#endif
-
-	#if ALT_SERIAL_PORT
-		ALT_SERIAL_PORT.begin(115200);	// Serial3
-		delay(100);
-		#if HOW_DEBUG_OUTPUT == DEBUG_TO_ALT_SERIAL
-			dbgSerial = &ALT_SERIAL_PORT;
-			display(0,"TE3_hub.ino setup() started on ALT_SERIAL_PORT",0);
-		#endif
-	#endif
-
 
 	//-------------
 	// init usb
@@ -305,20 +275,22 @@ void setup()
 		setFTPDescriptors();
     #endif
 
-	my_usb_init();
     delay(500);
+	my_usb_init();
 
 	#if FLASH_PIN
 		digitalWrite(FLASH_PIN,0);
 	#endif
 
+
 	//---------------------------------
 	// initialize USB_SERIAL_PORT
 	//---------------------------------
 
+	delay(500);
 	USB_SERIAL_PORT.begin(115200);		// Serial.begin()
-	delay(100);
 	#if HOW_DEBUG_OUTPUT == DEBUG_TO_ALT_SERIAL
+		delay(500);
 		display(0,"TE3_hub.ino setup() started on USB_SERIAL_PORT",0);
 	#endif
 
@@ -327,50 +299,31 @@ void setup()
 	// initialize the audio system
 	//-----------------------------------
 
-	delay(250);
+	delay(500);
 	display(0,"initializing audio system",0);
 
-	#if TRIGGER_PIN
-		pinMode(TRIGGER_PIN,OUTPUT);
-		digitalWrite(TRIGGER_PIN,0);
-	#endif
+	if (monitorInput || monitorUSB || monitorSine)
+		setNewConnection();
 
 	AudioMemory(100);
 	delay(250);
 
-	#if TRIGGER_PIN
-		digitalWrite(TRIGGER_PIN,1);
-	#endif
-
-	// Note: the artisan Pifi seems to put out about the same signal
-	// via either the HP jack or the line out plugs.
-
 	sgtl5000.enable();
 	sgtl5000.setInput(SGTL_INPUT_LINEIN);		// line_in == 0
-	// audioExperiments();
+	sgtl5000.setDefaultGains();
 
-	#if 1
-		sgtl5000.setDefaultGains();
-		sgtl5000.dumpCCValues("after setDefaultGains()");
-	#endif
+	mixer_L.gain(MIX_CHANNEL_MAIN,	DEFAULT_VOLUME_MAIN);
+	mixer_R.gain(MIX_CHANNEL_MAIN,	DEFAULT_VOLUME_MAIN);
 
-
-	#if WITH_USB_AUDIO
-		#if WITH_MIXERS
-			mixer_l.gain(0, 1.0);
-			mixer_l.gain(1, 1.0);
-			mixer_r.gain(0, 1.0);
-			mixer_r.gain(1, 1.0);
-		#endif
-	#endif
+	sine1.frequency(FREQ_SINE1);
+	sine2.frequency(FREQ_SINE2);
 
 
 	//--------------------------------------
-	// midiHost
+	// initialize midiHost
 	//--------------------------------------
 
-	#if WITH_MIDI_HOST
-		// defined in midiHost.h
+	#if WITH_MIDI_HOST   // defined in midiHost.h
 		display(0,"initilizing midiHost",0);
 		midi_host.init();
 	#endif
@@ -383,7 +336,8 @@ void setup()
 
 	display(0,"TE3_hub.ino setup() finished",0);
 
-}
+}	// setup()
+
 
 
 
@@ -421,8 +375,17 @@ void loop()
 	#endif // FLASH_PIN
 
 
-	#if TONE_SWEEP_TEST
-		toneSweepTest();
+	//--------------------------------------------------------
+	// SPOOF_FTP processing
+	//--------------------------------------------------------
+
+	#if WITH_MIDI_HOST && SPOOF_FTP
+		uint32_t msg32 = usb_midi_read_message();  // read from device
+		if (msg32)
+		{
+			// display(0,"midi(0x%08x",msg32);
+			midi_host.write_packed(msg32);
+		}
 	#endif
 
 
@@ -442,43 +405,28 @@ void loop()
 		}
 	#endif
 
-
-	//--------------------------------------------------------
-	// MIDI HOST processing outside of the rx_data() irq
-	//--------------------------------------------------------
-	// None of this is needed.
-	//
-	//	myusb.Task();  // does not seem to be needed
-	//	uint32_t msg = midi_host.myRead();
-	// 	if (midi_host.read())
-	//		display(0,"HOST(%02x,%02x,%02x)",midi_host.getType(), midi_host.getData1(), midi_host.getData2());
-
-	#if WITH_MIDI_HOST && SPOOF_FTP
-		uint32_t msg32 = usb_midi_read_message();  // read from device
-		if (msg32)
-		{
-			// display(0,"midi(0x%08x",msg32);
-			midi_host.write_packed(msg32);
-		}
-	#endif
-
-
 	//------------------------------------------------------
 	// Normal Processing
 	//------------------------------------------------------
-
-	#if 0
-		delay(50);
-	#endif
+	// handle SGTL5000 eq automation
 
 	handleSerialMidi();
 
-	#if 0
-		// handle SGTL5000 eq automation
-		sgtl5000.loop();
-	#endif
+	sgtl5000.loop();
 
-}
+	if (SINE_WAVE_TO_USB || monitorSine)
+	{
+		if (millis() > next_sine_time)
+		{
+			next_sine_time = millis() + SINE_TOGGLE_TIME;
+			sine_toggle = !sine_toggle;
+			sine1.amplitude(sine_toggle ? 0.0 : 0.8);
+			sine2.amplitude(sine_toggle ? 0.8 : 0.0);
+		}
+	}
+
+}	// loop()
+
 
 
 //==============================================================
