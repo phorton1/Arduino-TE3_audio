@@ -6,15 +6,21 @@
 #include <Audio.h>
 #include <Wire.h>
 #include <myDebug.h>
-#include <teSGTL5000.h>
-#include <teMidi.h>
+#include <teMIDI.h>
+#include <teCommon.h>
+#include <sgtl5000midi.h>
+#include "src/sgtl5000.h"
 #include "src/midiHost.h"
 
 
 #define	dbg_audio	0
 
+
 #define USB_SERIAL_PORT			Serial
 #define MIDI_SERIAL_PORT		Serial1
+
+void tehub_dumpCCValues(const char *where);
+	// forward
 
 
 //---------------------------------------
@@ -47,68 +53,43 @@
 	// port, and no provision will be coded for having it on an outside
 	// hub, or creating a midiHost in the TE3 part of the system.
 
-#define FLASH_PIN		13
+#define FLASH_PIN	13
 	// Set this to a pin to flash a heartbeat during loop()
 	// The teensy4.x onboard LED is pin 13
 
-#define USE_TEENSY_QUAD		0
-	// Deployment setting will be 1.  Otherwise, for early
-	// testing I allowed for using a regular i2s device.
 #define SINE_WAVE_TO_USB	0
 	// compile time option to send a sine wave to the iPad
+#define SINE_WAVE_TO_AUX	0
+	// compile time option to send a sine wave to the MIX_CHANNEL_AUX
+
+
+#define DEFAULT_VOLUME_IN		0		// set to 1.0 in early testing or to bypass USB and Looper
+#define DEFAULT_VOLUME_USB		0		// set to 1.0 to hear what comes from the iPad
+#define DEFAULT_VOLUME_LOOP		100		// currently all mixing is done on the Looper ... more later
+#define DEFAULT_VOLUME_AUX		80		// zero if !SINE_WAVE_TO_USB || SINE_WAVE_TO_AUX
 	
+#define FREQ_SINE1				330
+#define FREQ_SINE2				440
+#define SINE_TOGGLE_TIME		1000	// ms
+#define SINE_AMPLITUDE			0.8
+
+
 //-------------------------------------------
 // audio system setup
 //-------------------------------------------
-// All audio system components are statically constructed.
-// They are connected during setup().
 
-#define MAX_CONNECTIONS		16
+#define MIX_CHANNEL_IN		0			// the original i2s_in (already in MAIN if !USE_TEENSY_QUAD)
+#define MIX_CHANNEL_USB		1			// the sound returned from the iPad and sent to rpi Looper
+#define MIX_CHANNEL_LOOP  	2			// the sound returned from the rPi Looper
+#define MIX_CHANNEL_AUX		3			// at this time, where the sine wave, if any will be sent
 
-#define MIX_CHANNEL_IN		0		// the original i2s_in (already in MAIN if !USE_TEENSY_QUAD)
-#define MIX_CHANNEL_USB		1		// the sound returned from the iPad
-#define MIX_CHANNEL_MAIN  	2		// THE FINAL RESULT
-#define MIX_CHANNEL_SINE	3		// A sine wave that should always be audible
+uint8_t mix_level[4];
 
-#define DEFAULT_VOLUME_IN		1.0
-#define DEFAULT_VOLUME_USB		1.0
-#define DEFAULT_VOLUME_MAIN		1.0
-#define DEFAULT_VOLUME_SINE		0.8
-
-// sine wave setup
-
-#define FREQ_SINE1			330
-#define FREQ_SINE2			440
-#define SINE_TOGGLE_TIME	1000			// ms
-
-// run time options
-// if any are set to 1, setNewConnection() will be called from setup()
-
-bool monitorInput = 0;
-	// if 1, MIX_CHANNEL_IN will be hooked up
-	// will be redundant to MAIN if !USE_TEENSY_QUAD
-bool monitorUSB = 1;
-	// if 1, MIX_CHANNEL_USB will be hooked up
-bool monitorSine  = 0;
-	// if 1, MIX_CHANNEL_SINE will be hooked up
-bool lastMonitorInput = 0;
-bool lastMonitorUSB = 0;
-bool lastMonitorSine = 0;
-	// only set volumes on state changes
-
-
-// ALL AUDIO SYSTEM COMPONENTS ARE STATICALLY INITALIZED
 
 SGTL5000 sgtl5000;
 
-#if WITH_TEENSY_QUAD
-	AudioInputI2SQuad       i2s_in;
-	AudioOutputI2SQuad      i2s_out;
-#else
-	AudioInputI2S  			i2s_in;
-	AudioOutputI2S  		i2s_out;
-#endif
-
+AudioInputI2SQuad       i2s_in;
+AudioOutputI2SQuad      i2s_out;
 AudioInputUSB   		usb_in;
 AudioOutputUSB  		usb_out;
 AudioSynthWaveformSine  sine1;
@@ -116,120 +97,44 @@ AudioSynthWaveformSine  sine2;
 AudioMixer4				mixer_L;
 AudioMixer4				mixer_R;
 
-// STATICALLY INITIALIZED CONNECTIONS
+
+AudioConnection	c_il(i2s_in,  0, mixer_L, MIX_CHANNEL_IN);			// SGTL5000 --> mixer
+AudioConnection	c_ir(i2s_in,  1, mixer_R, MIX_CHANNEL_IN);
 
 #if SINE_WAVE_TO_USB
 	AudioConnection c_in1(sine1,  0, usb_out, 0);					// sine wave --> USB_out
 	AudioConnection c_in2(sine2,  0, usb_out, 1);
-#else	// normal setup
+#else
 	AudioConnection c_in1(i2s_in, 0, usb_out, 0);					// STGTL5000 --> USB_out
 	AudioConnection c_in2(i2s_in, 1, usb_out, 1);
 #endif
 
-#if WITH_TEENSY_QUAD
-	AudioConnection c_q1(usb_in, 0, i2s_out, 2);					// USB_in --> Looper
-	AudioConnection c_q2(usb_in, 1, i2s_out, 3);
-	AudioConnection c_q3(i2s_in, 2, mixer_L, MIX_CHANNEL_MAIN);		// Looper --> mixer
-	AudioConnection c_q4(i2s_in, 3, mixer_R, MIX_CHANNEL_MAIN);
-#else
-	AudioConnection c_s1(i2s_in, 0, mixer_L, MIX_CHANNEL_MAIN);		// SGTL5000 --> mixer
-	AudioConnection c_s2(i2s_in, 1, mixer_R, MIX_CHANNEL_MAIN);
+AudioConnection	c_ul(usb_in,  0, mixer_L, MIX_CHANNEL_USB);			// USB_in -> mixer
+AudioConnection	c_ur(usb_in,  1, mixer_R, MIX_CHANNEL_USB);
+AudioConnection c_q1(usb_in,  0, i2s_out, 2);						// USB_in --> Looper
+AudioConnection c_q2(usb_in,  1, i2s_out, 3);
+AudioConnection c_q3(i2s_in,  2, mixer_L, MIX_CHANNEL_LOOP);		// Looper --> mixer
+AudioConnection c_q4(i2s_in,  3, mixer_R, MIX_CHANNEL_LOOP);
+AudioConnection c_o1(mixer_L, 0, i2s_out, 0);						// mixer --> SGTL5000
+AudioConnection c_o2(mixer_R, 0, i2s_out, 1);
+
+
+#if SINE_WAVE_TO_USB || SINE_WAVE_TO_AUX
+	AudioConnection c_sine_L.connect(sine1, 0, mixer_L, MIX_CHANNEL_SINE);
+	AudioConnection c_sine_R.connect(sine2, 0, mixer_R, MIX_CHANNEL_SINE);
 #endif
 
-AudioConnection c_out1(mixer_L, 0, i2s_out, 0);						// mixer --> SGTL5000
-AudioConnection c_out2(mixer_R, 0, i2s_out, 1);
 
-
-// dynamic connections
-
-AudioConnection c_in_L;
-AudioConnection c_in_R;
-AudioConnection c_usb_L;
-AudioConnection c_usb_R;
-AudioConnection c_sine_L;
-AudioConnection c_sine_R;
-
-bool sine_toggle = 0;
-uint32_t next_sine_time = 0;
-
-
-//----------------------
-// setNewConnection
-//----------------------
-
-void setNewConnection()
+bool setMixLevel(uint8_t channel, uint8_t val)
 {
-	display(dbg_audio,"setNewConnection() old/new input(%d,%d) USB(%d,%d) sine(%d,%d) ",
-		lastMonitorInput,
-		monitorInput,
-		lastMonitorUSB,
-		monitorUSB,
-		lastMonitorSine,
-		monitorSine);
-	proc_entry();
-
-	if (lastMonitorInput != monitorInput)
-	{
-		lastMonitorInput = monitorInput;
-		if (monitorInput)
-		{
-			display(0,"connecting monitorInput",0);
-			c_in_L.connect(i2s_in, 0, mixer_L, MIX_CHANNEL_IN);
-			c_in_R.connect(i2s_in, 1, mixer_R, MIX_CHANNEL_IN);
-			mixer_L.gain(MIX_CHANNEL_IN, DEFAULT_VOLUME_IN);
-			mixer_R.gain(MIX_CHANNEL_IN, DEFAULT_VOLUME_IN);
-		}
-		else
-		{
-			display(0,"disconnecting monitorInput",0);
-			c_in_L.disconnect();
-			c_in_R.disconnect();
-			mixer_L.gain(MIX_CHANNEL_IN, 0.0);
-			mixer_R.gain(MIX_CHANNEL_IN, 0.0);
-		}
-	}
-	if (lastMonitorUSB != monitorUSB)
-	{
-		lastMonitorInput = monitorUSB;
-		if (monitorUSB)
-		{
-			display(0,"connecting monitorUSB",0);
-			c_usb_L.connect(usb_in, 0, mixer_L, MIX_CHANNEL_USB);
-			c_usb_R.connect(usb_in, 1, mixer_R, MIX_CHANNEL_USB);
-			mixer_L.gain(MIX_CHANNEL_USB, DEFAULT_VOLUME_USB);
-			mixer_R.gain(MIX_CHANNEL_USB, DEFAULT_VOLUME_USB);
-		}
-		else
-		{
-			display(0,"disconnecting monitorUSB",0);
-			c_usb_L.disconnect();
-			c_usb_R.disconnect();
-			mixer_L.gain(MIX_CHANNEL_USB, 0.0);
-			mixer_R.gain(MIX_CHANNEL_USB, 0.0);
-		}
-	}
-	if (lastMonitorSine != monitorSine)
-	{
-		lastMonitorSine = monitorSine;
-		if (monitorSine)
-		{
-			display(0,"connecting monitorSine",0);
-			c_sine_L.connect(sine1, 0, mixer_L, MIX_CHANNEL_SINE);
-			c_sine_R.connect(sine2, 0, mixer_R, MIX_CHANNEL_SINE);
-			mixer_L.gain(MIX_CHANNEL_SINE, DEFAULT_VOLUME_SINE);
-			mixer_R.gain(MIX_CHANNEL_SINE, DEFAULT_VOLUME_SINE);
-		}
-		else
-		{
-			display(0,"disconnecting monitorSine",0);
-			c_sine_L.disconnect();
-			c_sine_R.disconnect();
-			mixer_L.gain(MIX_CHANNEL_SINE, 0.0);
-			mixer_R.gain(MIX_CHANNEL_SINE, 0.0);
-		}
-	}
+	display(dbg_audio,"setMixLevel(%d,%d)",channel,val);
+	if (val > 127) val = 127;
+	float vol = val/100;
+	mixer_L.gain(channel, vol);
+	mixer_R.gain(channel, vol);
+	mix_level[channel] = val;
+	return true;
 }
-
 
 
 
@@ -242,6 +147,19 @@ extern "C" {
     extern void setFTPDescriptors();    	// _usbNames.c
 	extern const char *getUSBSerialNum();	// _usbNames.c
 }
+
+
+
+void reboot_teensy()
+{
+	warning(0,"REBOOTING TE_HUB!",0);
+	delay(300);
+	SCB_AIRCR = 0x05FA0004;
+	SCB_AIRCR = 0x05FA0004;
+	while (1) ;
+}
+
+
 
 
 void setup()
@@ -267,9 +185,9 @@ void setup()
 		display(0,"TE3_hub.ino setup() started on MIDI_SERIAL_PORT",0);
 	#endif
 
-	//-------------
-	// init usb
-	//-------------
+	//-----------------------
+	// initialize usb
+	//-----------------------
 
 	#if SPOOF_FTP
 		setFTPDescriptors();
@@ -302,21 +220,26 @@ void setup()
 	delay(500);
 	display(0,"initializing audio system",0);
 
-	if (monitorInput || monitorUSB || monitorSine)
-		setNewConnection();
-
 	AudioMemory(100);
 	delay(250);
 
 	sgtl5000.enable();
-	sgtl5000.setInput(SGTL_INPUT_LINEIN);		// line_in == 0
-	sgtl5000.setDefaultGains();
+	sgtl5000.setDefaults();
+		// see heavy duty notes in sgtl5000midi.h
+		
+	setMixLevel(MIX_CHANNEL_IN, 	DEFAULT_VOLUME_IN);
+	setMixLevel(MIX_CHANNEL_USB, 	DEFAULT_VOLUME_USB);
+	setMixLevel(MIX_CHANNEL_LOOP,	DEFAULT_VOLUME_LOOP);
 
-	mixer_L.gain(MIX_CHANNEL_MAIN,	DEFAULT_VOLUME_MAIN);
-	mixer_R.gain(MIX_CHANNEL_MAIN,	DEFAULT_VOLUME_MAIN);
+	#if SINE_WAVE_TO_USB || SINE_WAVE_TO_AUX
+		sine1.frequency(FREQ_SINE1);
+		sine2.frequency(FREQ_SINE2);
+		setMixLevel(MIX_CHANNEL_AUX, 	DEFAULT_VOLUME_AUX);
+	#else
+		setMixLevel(MIX_CHANNEL_AUX, 	0.0);
+	#endif
 
-	sine1.frequency(FREQ_SINE1);
-	sine2.frequency(FREQ_SINE2);
+	tehub_dumpCCValues("in TE_hub::setup()");
 
 
 	//--------------------------------------
@@ -414,16 +337,17 @@ void loop()
 
 	sgtl5000.loop();
 
-	if (SINE_WAVE_TO_USB || monitorSine)
-	{
+	#if SINE_WAVE_TO_USB || SINE_WAVE_TO_AUX
+		static bool sine_toggle = 0;
+		static uint32_t next_sine_time = 0;
 		if (millis() > next_sine_time)
 		{
 			next_sine_time = millis() + SINE_TOGGLE_TIME;
 			sine_toggle = !sine_toggle;
-			sine1.amplitude(sine_toggle ? 0.0 : 0.8);
-			sine2.amplitude(sine_toggle ? 0.8 : 0.0);
+			sine1.amplitude(sine_toggle ? 0.0 : SINE_AMPLITUDE);
+			sine2.amplitude(sine_toggle ? SINE_AMPLITUDE : 0.0);
 		}
-	}
+	#endif
 
 }	// loop()
 
@@ -434,11 +358,69 @@ void loop()
 //==============================================================
 
 #define dbg_sm  0
+#define dbg_dispatch	0
+
+int tehub_getCC(uint8_t cc)
+{
+	int val = -1;
+
+	switch (cc)
+	{
+		case TEHUB_CC_DUMP		: val = 255;	break;
+		case TEHUB_CC_REBOOT	: val = 255;	break;
+		case TEHUB_CC_RESET		: val = 255;	break;
+		case TEHUB_CC_MIX_IN	: return mix_level[MIX_CHANNEL_IN];		break;
+		case TEHUB_CC_MIX_USB	: return mix_level[MIX_CHANNEL_USB];	break;
+		case TEHUB_CC_MIX_LOOP	: return mix_level[MIX_CHANNEL_LOOP];	break;
+		case TEHUB_CC_MIX_AUX	: return mix_level[MIX_CHANNEL_AUX];	break;
+	}
+
+	return val;
+}
 
 
-#define RAW_SGTL5000_CABLE 	(0x0E << 4)
-#define knownCable(byte)	(((byte) & RAW_SGTL5000_CABLE) == RAW_SGTL5000_CABLE)
-#define SGTL5000_CC			(RAW_SGTL5000_CABLE | MIDI_TYPE_CC)
+void tehub_dumpCCValues(const char *where)
+{
+	display(0,"tehub CC values %s",where);
+	proc_entry();
+	for (uint8_t cc=TEHUB_CC_BASE; cc<=TEHUB_CC_MAX; cc++)
+	{
+		if (!tehub_writeOnlyCC(cc))
+		{
+			int val = tehub_getCC(cc);
+			display(0,"TEHUB_CC(%-2d) = %-4d  %-19s max=%d",cc,val,tehub_getCCName(cc),tehub_getCCMax(cc));
+		}
+		else if (0)
+			display(0,"",0);
+	}
+	proc_leave();
+}
+
+
+bool tehub_dispatchCC(uint8_t cc, uint8_t val)
+{
+	display(dbg_dispatch,"tehub CC(%d) %s <= %d",cc,tehub_getCCName(cc),val);
+
+	switch (cc)
+	{
+		case TEHUB_CC_DUMP		: tehub_dumpCCValues("from dump_tehub command"); return 1;
+		case TEHUB_CC_REBOOT	: reboot_teensy();
+		case TEHUB_CC_RESET		: display(0,"TEHUB_RESET not implemented yet",0); return 1;
+		case TEHUB_CC_MIX_IN	: return setMixLevel(MIX_CHANNEL_IN,   val);
+		case TEHUB_CC_MIX_USB	: return setMixLevel(MIX_CHANNEL_USB,  val);
+		case TEHUB_CC_MIX_LOOP	: return setMixLevel(MIX_CHANNEL_LOOP, val);
+		case TEHUB_CC_MIX_AUX	: return setMixLevel(MIX_CHANNEL_AUX,  val);
+	}
+
+	my_error("unknown dispatchCC(%d,%d)",cc,val);
+	return false;
+}
+
+
+
+#define isCC(byte)				(((byte) & 0x0f) == MIDI_TYPE_CC)
+#define knownCable(byte)		(((byte >> 4) == SGTL5000_CABLE) || ((byte >> 4) == TEHUB_CABLE))
+#define knownCableCC(byte)		(isCC(byte) && knownCable(byte))
 
 
 void handleSerialMidi()
@@ -462,13 +444,13 @@ void handleSerialMidi()
 
 		if (len == 0)
 		{
-			if (knownCable(byte))
+			if (knownCableCC(byte))
 			{
 				buf[len++] = byte;
 			}
 			else
 			{
-				my_error("TE3_hub: unexpected cable in MIDI byte0(0x%02x)",byte);
+				my_error("TE3_hub: unexpected cable/type in MIDI byte0(0x%02x)",byte);
 			}
 		}
 		else
@@ -486,9 +468,16 @@ void handleSerialMidi()
 				{
 					sgtl5000.dispatchCC(msg.param1(),msg.param2());
 				}
+				else if (msg.cable() == TEHUB_CABLE &&
+						 msg.channel() == TEHUB_CHANNEL &&
+						 msg.type() == MIDI_TYPE_CC)
+				{
+					tehub_dispatchCC(msg.param1(),msg.param2());
+				}
+
 				else
 				{
-					my_error("TE3_hub: unexpeced serial midi(0x%08x)",msg32);
+					my_error("TE3_hub: unexpected serial midi(0x%08x)",msg32);
 				}
 
 				len = 0;
