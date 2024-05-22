@@ -841,6 +841,8 @@ bool SGTL5000::setDefaults()
 	display(dbg_api,"SGTL5000::setDefaults()",0);
 	proc_entry();
 
+	#define TEST_GUITAR_VALUES   1
+
 	bool retval =
 
 		// mute the sound
@@ -856,6 +858,7 @@ bool SGTL5000::setDefaults()
 		setDacVolume(0) &&						// same as reset & enable()
 		setDacVolumeRamp(DAC_VOLUME_RAMP_EXPONENTIAL) &&	// same as enable()
 		setLineOutLevel(13) &&					// my default
+
 		setHeadphoneSelect(HEADPHONE_NORMAL) &&	// same as reset & enable()
 		setHeadphoneVolume(97) &&				// my default same as reset
 		setAdcHighPassFilter(ADC_HIGH_PASS_ENABLE) &&	// same as reset
@@ -875,9 +878,15 @@ bool SGTL5000::setDefaults()
 		setEqBand(4,15,true) &&                 // same as reset
 		setAutoVolumeEnable(0) &&				// same as reset; not supported by midi
 
+		#if TEST_GUITAR_LEVELS
+			setLineInLevel(7) &&					// my default
+			setLineOutLevel(18) &&					// my default
+		#else
+			setMuteHeadphone(0);
+		#endif
+
 		// unmute the sound
-		setMuteLineOut(0) &&					// my default same as reset
-		setMuteHeadphone(0);					// same as reset/enable()
+		setMuteLineOut(0);					// same as reset/enable()
 
 
 	proc_leave();

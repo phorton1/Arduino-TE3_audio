@@ -1,6 +1,6 @@
 #pragma once
 
-#define WITH_MIDI_HOST  1
+#define WITH_MIDI_HOST  0
     // The MIDI host can be compiled out if I'm paranoid
     // about something not working, but otherwise, there's
     // no reason to ever set this define to zero.
