@@ -19,7 +19,7 @@
 #define SGTL5000_I2C_ADDR_CS_ALT		0x2A  // CTRL_ADR0_CS  pin high
 
 class SGTL5000 : public AudioControl
-	// Client may call setDefault() for a reliable setup of reasonable values.
+	// Client may call setDefaults() for a reliable setup of reasonable values.
 	// Otherwise, client may call the the methods associated with the [bracketed] blocks.
 	//
 	//				 (bypass)
