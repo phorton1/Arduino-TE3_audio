@@ -456,7 +456,7 @@ void loop()
 	// It is not clear if I get the overruns sooner, or more frequently,
 	//		based on the complexity (WITH_MIXERS, WITH_SINE) of my code.
 
-	#if 1
+	#if 0
 		extern volatile uint32_t usb_audio_underrun_count;
 		extern volatile uint32_t usb_audio_overrun_count;
 
