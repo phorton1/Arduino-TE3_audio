@@ -1,7 +1,9 @@
 //-------------------------------------------------------
 // TE3_hub.ino
 //-------------------------------------------------------
-// USB Serial, Audio, and MIDI device with USB Host
+// USB Serial, Audio, and MIDI device with USB Host.
+// Runs on a teensy4.0 with a RevD audio board above it.
+
 
 #include <Audio.h>
 #include <Wire.h>
@@ -36,7 +38,7 @@ void tehub_dumpCCValues(const char *where);
 	// to hook up directly to the TE3_hub, it means it's connected
 	// to the laptop, and I can recompile if I wanna change this.
 
-#define FLASH_PIN	13
+#define PIN_HUB_ALIVE	13
 	// Set this to a pin to flash a heartbeat during loop()
 	// The teensy4.x onboard LED is pin 13
 
@@ -330,9 +332,9 @@ void reboot_teensy()
 
 void setup()
 {
-	#if FLASH_PIN
-		pinMode(FLASH_PIN,OUTPUT);
-		digitalWrite(FLASH_PIN,1);
+	#if PIN_HUB_ALIVE
+		pinMode(PIN_HUB_ALIVE,OUTPUT);
+		digitalWrite(PIN_HUB_ALIVE,1);
 	#endif
 
 	//-----------------------------------------
@@ -362,8 +364,8 @@ void setup()
     delay(500);
 	my_usb_init();
 
-	#if FLASH_PIN
-		digitalWrite(FLASH_PIN,0);
+	#if PIN_HUB_ALIVE
+		digitalWrite(PIN_HUB_ALIVE,0);
 	#endif
 
 	#if WITH_MIDI_HOST   // vestigial
@@ -426,8 +428,8 @@ void setup()
 	// setup finished
 	//--------------------------------
 
-	#if FLASH_PIN
-		digitalWrite(FLASH_PIN,1);
+	#if PIN_HUB_ALIVE
+		digitalWrite(PIN_HUB_ALIVE,1);
 	#endif
 
 	display(0,"TE3_hub.ino setup() finished",0);
@@ -480,16 +482,16 @@ void loop()
 		}
 	#endif
 
-	#if FLASH_PIN
+	#if PIN_HUB_ALIVE
 		static bool flash_on = 0;
 		static uint32_t flash_last = 0;
 		if (millis() - flash_last > 1000)
 		{
 			flash_last = millis();
 			flash_on = !flash_on;
-			digitalWrite(FLASH_PIN,flash_on);
+			digitalWrite(PIN_HUB_ALIVE,flash_on);
 	    }
-	#endif // FLASH_PIN
+	#endif // PIN_HUB_ALIVE
 
 
 	//-----------------------------
