@@ -841,7 +841,7 @@ bool SGTL5000::setDefaults()
 	display(dbg_api,"SGTL5000::setDefaults()",0);
 	proc_entry();
 
-	#define MY_GUITAR_VALUES   1
+	#define MY_GUITAR_LEVELS   1
 
 	bool retval =
 
