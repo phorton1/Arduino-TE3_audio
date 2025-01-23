@@ -841,7 +841,7 @@ bool SGTL5000::setDefaults()
 	display(dbg_api,"SGTL5000::setDefaults()",0);
 	proc_entry();
 
-	#define TEST_GUITAR_VALUES   1
+	#define MY_GUITAR_VALUES   1
 
 	bool retval =
 
@@ -878,7 +878,7 @@ bool SGTL5000::setDefaults()
 		setEqBand(4,15,true) &&                 // same as reset
 		setAutoVolumeEnable(0) &&				// same as reset; not supported by midi
 
-		#if TEST_GUITAR_LEVELS
+		#if MY_GUITAR_LEVELS
 			setLineInLevel(7) &&					// my default
 			setLineOutLevel(18) &&					// my default
 		#else

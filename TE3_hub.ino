@@ -4,6 +4,7 @@
 // USB Serial & Audio device
 // Runs on a teensy4.0 with a RevD audio board above it.
 // Communicates with TE3 via MIDI Serial data.
+// The audio device is a teensyQuad (AudioIn/OutI2SQuad).
 
 #include <Audio.h>
 #include <Wire.h>
@@ -42,7 +43,7 @@ void tehub_dumpCCValues(const char *where);
 	// The teensy4.x onboard LED is pin 13
 
 #define WITH_MIXERS		1
-	// The main audio device is always a teensyQuad.
+	// The production setting is currently WITH_MIXERS=1
 	// Set this to zero for a minimal USB pass through device
 	// 		without involving the rPi andw ith no volume controls,
 	//		where i2s_in -> usb_out && usb_in --> i2s_out
@@ -50,16 +51,11 @@ void tehub_dumpCCValues(const char *where);
 	//		and the device is responsive to midi MIX_XXX commands.
 	//		including the LOOP volume
 
-#define WITH_SINE	1
+#define WITH_SINE	0
 	// if defined, will include an input mixer to the USB out
 	//		allowing me to send a defined sine wave pattern to it.
 	// and if WITH_MIXERS it will also be sent to the MIX_AUX channel.
 
-
-#define WITH_MIDI_HOST 	0
-#define SPOOF_FTP		0
-	// vestigial
-	
 
 #define DEFAULT_VOLUME_IN		0		// listen to the raw LINE_IN signal
 #define DEFAULT_VOLUME_USB		100		// listen to the returned USB
@@ -386,14 +382,6 @@ void setup()
 	sgtl5000.enable();
 	sgtl5000.setDefaults();
 
-	// setDefaults() is optimized for guitar.
-	// below are temporary better defaults for testing with
-	// artisan rPi as the audio input
-
-	#if 1
-		sgtl5000.setLineInLevel(3);
-	#endif
-
 	// tehub_dumpCCValues("in TE_hub::setup()");
 		// see heavy duty notes in sgtl5000midi.h
 
@@ -418,6 +406,8 @@ void setup()
 	#if PIN_HUB_ALIVE
 		digitalWrite(PIN_HUB_ALIVE,1);
 	#endif
+
+	tehub_dumpCCValues("from dump_tehub command"); 
 
 	display(0,"TE3_hub.ino setup() finished",0);
 
