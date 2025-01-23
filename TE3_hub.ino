@@ -1,9 +1,9 @@
 //-------------------------------------------------------
 // TE3_hub.ino
 //-------------------------------------------------------
-// USB Serial, Audio, and MIDI device with USB Host.
+// USB Serial & Audio device
 // Runs on a teensy4.0 with a RevD audio board above it.
-
+// Communicates with TE3 via MIDI Serial data.
 
 #include <Audio.h>
 #include <Wire.h>
@@ -12,7 +12,6 @@
 #include <teCommon.h>
 #include <sgtl5000midi.h>
 #include "src/sgtl5000.h"
-// #include "src/midiHost.h"
 
 
 #define	dbg_audio	0
@@ -36,7 +35,7 @@ void tehub_dumpCCValues(const char *where);
 	// The default is that debugging goes to the MIDI Serial port
 	// (TE3) and is forwarded to the laptop from there.  If I need
 	// to hook up directly to the TE3_hub, it means it's connected
-	// to the laptop, and I can recompile if I wanna change this.
+	// to the laptop for unusual debugging.
 
 #define PIN_HUB_ALIVE	13
 	// Set this to a pin to flash a heartbeat during loop()
@@ -45,7 +44,7 @@ void tehub_dumpCCValues(const char *where);
 #define WITH_MIXERS		1
 	// The main audio device is always a teensyQuad.
 	// Set this to zero for a minimal USB pass through device
-	// 		without involving the rPi andwith no volume controls,
+	// 		without involving the rPi andw ith no volume controls,
 	//		where i2s_in -> usb_out && usb_in --> i2s_out
 	// If 1, a pair of mixers are added for the final i2s_out
 	//		and the device is responsive to midi MIX_XXX commands.
@@ -312,8 +311,7 @@ bool setMixLevel(uint8_t channel, uint8_t val)
 //=================================================
 
 extern "C" {
-    extern void my_usb_init();          	// in usb_dev.c
-    extern void setFTPDescriptors();    	// _usbNames.c
+    extern void my_usb_init();          	 // in usb.c
 	extern const char *getUSBSerialNum();	// _usbNames.c
 }
 
@@ -357,22 +355,12 @@ void setup()
 	// initialize usb
 	//-----------------------
 
-	#if SPOOF_FTP	// vestigial
-		setFTPDescriptors();
-    #endif
-
     delay(500);
 	my_usb_init();
 
 	#if PIN_HUB_ALIVE
 		digitalWrite(PIN_HUB_ALIVE,0);
 	#endif
-
-	#if WITH_MIDI_HOST   // vestigial
-		display(0,"initilizing midiHost",0);
-		midi_host.init();
-	#endif
-
 
 	//---------------------------------
 	// initialize USB_SERIAL_PORT
@@ -384,7 +372,6 @@ void setup()
 		delay(500);
 		display(0,"TE3_hub.ino setup() started on USB_SERIAL_PORT",0);
 	#endif
-
 
 	//-----------------------------------
 	// initialize the audio system
