@@ -1,5 +1,5 @@
 //-------------------------------------------------------
-// TE3_hub.ino
+// TE3_audio.ino
 //-------------------------------------------------------
 // USB Serial & Audio device
 // Runs on a teensy4.0 with a RevD audio board above it.
@@ -55,7 +55,8 @@
 // Unforunately, there is a 'used' 4.0 in a packet marked
 // "Bad Mod Beware", where not only did I cut the 3.3V and VBat lines
 // to the end pins, but it looks like I also cut the trace to the all
-// important pin32, so that 4.0 is NOT TO BE USED FOR TE3_HUB.
+// important pin32, so that one teensy 4.0 is NOT TO BE USED FOR the
+// TE3_audio device.
 
 #include <Audio.h>
 #include <Wire.h>
@@ -78,10 +79,10 @@
 #define HOW_DEBUG_OUTPUT		DEBUG_TO_MIDI_SERIAL
 	// The default is that debugging goes to the MIDI Serial port
 	// (TE3) and is forwarded to the laptop from there.  If I need
-	// to hook up directly to the TE3_hub, it means it's connected
+	// to hook up directly to the TE3_audio, it means it's connected
 	// to the laptop for unusual debugging.
 
-#define PIN_HUB_ALIVE	13
+#define PIN_AUDIO_ALIVE	13
 	// Set this to a pin to flash a heartbeat during loop()
 	// The teensy4.x onboard LED is pin 13
 
@@ -191,15 +192,15 @@ extern "C" {
     extern void my_usb_init();          	 // in usb.c
 }
 
-void tehub_dumpCCValues(const char *where);
+void audio_dumpCCValues(const char *where);
 	// forward
 
 
 void setup()
 {
-	#if PIN_HUB_ALIVE
-		pinMode(PIN_HUB_ALIVE,OUTPUT);
-		digitalWrite(PIN_HUB_ALIVE,1);
+	#if PIN_AUDIO_ALIVE
+		pinMode(PIN_AUDIO_ALIVE,OUTPUT);
+		digitalWrite(PIN_AUDIO_ALIVE,1);
 	#endif
 
 	//-----------------------------------------
@@ -207,7 +208,7 @@ void setup()
 	//-----------------------------------------
 
 	setColorString(COLOR_CONST_DEFAULT, "\033[94m");	// bright blue
-        // TE3_hub's normal display color is bright blue
+        // TE3_audio's normal display color is bright blue
         // TE3's normal (default) display color is green
         // Looper's normal display color, is cyan, I think
 
@@ -215,7 +216,7 @@ void setup()
 	#if HOW_DEBUG_OUTPUT == DEBUG_TO_MIDI_SERIAL
 		delay(500);
 		dbgSerial = &MIDI_SERIAL_PORT;
-		display(0,"TE3_hub.ino setup() started on MIDI_SERIAL_PORT",0);
+		display(0,"TE3_audio.ino setup() started on MIDI_SERIAL_PORT",0);
 	#endif
 
 	//-----------------------
@@ -225,8 +226,8 @@ void setup()
     delay(500);
 	my_usb_init();
 
-	#if PIN_HUB_ALIVE
-		digitalWrite(PIN_HUB_ALIVE,0);
+	#if PIN_AUDIO_ALIVE
+		digitalWrite(PIN_AUDIO_ALIVE,0);
 	#endif
 
 	//---------------------------------
@@ -237,15 +238,15 @@ void setup()
 		delay(500);
 		USB_SERIAL_PORT.begin(115200);		// Serial.begin()
 		delay(500);
-		display(0,"TE3_hub.ino setup() started on USB_SERIAL_PORT",0);
+		display(0,"TE3_audio.ino setup() started on USB_SERIAL_PORT",0);
 	#endif
 
 	//-----------------------------------
 	// initialize the audio system
 	//-----------------------------------
 
-	#if PIN_HUB_ALIVE
-		digitalWrite(PIN_HUB_ALIVE,1);
+	#if PIN_AUDIO_ALIVE
+		digitalWrite(PIN_AUDIO_ALIVE,1);
 	#endif
 
 	delay(500);
@@ -257,7 +258,7 @@ void setup()
 	sgtl5000.enable();
 	sgtl5000.setDefaults();
 
-	// tehub_dumpCCValues("in TE_hub::setup()");
+	// audio_dumpCCValues("in TE3_audio::setup()");
 		// see heavy duty notes in sgtl5000midi.h
 
 	setMixLevel(MIX_CHANNEL_IN, 	DEFAULT_VOLUME_IN);
@@ -270,13 +271,13 @@ void setup()
 	// setup finished
 	//--------------------------------
 
-	#if PIN_HUB_ALIVE
-		digitalWrite(PIN_HUB_ALIVE,0);
+	#if PIN_AUDIO_ALIVE
+		digitalWrite(PIN_AUDIO_ALIVE,0);
 	#endif
 
-	tehub_dumpCCValues("from dump_tehub command"); 
+	audio_dumpCCValues("from dump_audio command"); 
 
-	display(0,"TE3_hub.ino setup() finished",0);
+	display(0,"TE3_audio.ino setup() finished",0);
 
 }	// setup()
 
@@ -327,16 +328,16 @@ void loop()
 	#endif
 
 
-	#if PIN_HUB_ALIVE
+	#if PIN_AUDIO_ALIVE
 		static bool flash_on = 0;
 		static uint32_t flash_last = 0;
 		if (millis() - flash_last > 1000)
 		{
 			flash_last = millis();
 			flash_on = !flash_on;
-			digitalWrite(PIN_HUB_ALIVE,flash_on);
+			digitalWrite(PIN_AUDIO_ALIVE,flash_on);
 	    }
-	#endif // PIN_HUB_ALIVE
+	#endif // PIN_AUDIO_ALIVE
 
 	//-----------------------------
 	// set SGTL5000 from USB
@@ -373,7 +374,7 @@ void loop()
 
 void reboot_teensy()
 {
-	warning(0,"REBOOTING TE_HUB!",0);
+	warning(0,"REBOOTING TE_audio device!",0);
 	delay(300);
 	SCB_AIRCR = 0x05FA0004;
 	SCB_AIRCR = 0x05FA0004;
@@ -390,63 +391,63 @@ void reboot_teensy()
 #define dbg_sm  0
 #define dbg_dispatch	0
 
-int tehub_getCC(uint8_t cc)
+int audio_getCC(uint8_t cc)
 {
 	switch (cc)
 	{
-		case TEHUB_CC_DUMP				: return 255;
-		case TEHUB_CC_REBOOT			: return 255;
-		case TEHUB_CC_RESET				: return 255;
+		case AUDIO_CC_DUMP				: return 255;
+		case AUDIO_CC_REBOOT			: return 255;
+		case AUDIO_CC_RESET				: return 255;
 
-		case TEHUB_CC_MIX_IN		: return mix_level[MIX_CHANNEL_IN];
-		case TEHUB_CC_MIX_USB		: return mix_level[MIX_CHANNEL_USB];
-		case TEHUB_CC_MIX_LOOP		: return mix_level[MIX_CHANNEL_LOOP];
-		case TEHUB_CC_MIX_AUX		: return mix_level[MIX_CHANNEL_AUX];
+		case AUDIO_CC_MIX_IN		: return mix_level[MIX_CHANNEL_IN];
+		case AUDIO_CC_MIX_USB		: return mix_level[MIX_CHANNEL_USB];
+		case AUDIO_CC_MIX_LOOP		: return mix_level[MIX_CHANNEL_LOOP];
+		case AUDIO_CC_MIX_AUX		: return mix_level[MIX_CHANNEL_AUX];
 	}
 
 	return -1;		// unimplmented CC
 }
 
 
-void tehub_dumpCCValues(const char *where)
+void audio_dumpCCValues(const char *where)
 {
-	display(0,"tehub CC values %s",where);
+	display(0,"audio CC values %s",where);
 	int num_dumped = 0;
 	
 	proc_entry();
-	for (uint8_t cc=TEHUB_CC_BASE; cc<=TEHUB_CC_MAX; cc++)
+	for (uint8_t cc=AUDIO_CC_BASE; cc<=AUDIO_CC_MAX; cc++)
 	{
-		if (!tehub_writeOnlyCC(cc))
+		if (!audio_writeOnlyCC(cc))
 		{
-			int val = tehub_getCC(cc);
+			int val = audio_getCC(cc);
 			if (val != -1)
 			{
 				num_dumped++;
-				display(0,"TEHUB_CC(%-2d) = %-4d  %-19s max=%d",cc,val,tehub_getCCName(cc),tehub_getCCMax(cc));
+				display(0,"AUDIO_CC(%-2d) = %-4d  %-19s max=%d",cc,val,audio_getCCName(cc),audio_getCCMax(cc));
 			}
 		}
 	}
 	if (!num_dumped)
-		my_error("There are no CC's implemented by define in te_hub!",0);
+		my_error("There are no CC's implemented by define in the TE3_audio device!",0);
 
 	proc_leave();
 }
 
 
-bool tehub_dispatchCC(uint8_t cc, uint8_t val)
+bool audio_dispatchCC(uint8_t cc, uint8_t val)
 {
-	display(dbg_dispatch,"tehub CC(%d) %s <= %d",cc,tehub_getCCName(cc),val);
+	display(dbg_dispatch,"audio CC(%d) %s <= %d",cc,audio_getCCName(cc),val);
 
 	switch (cc)
 	{
-		case TEHUB_CC_DUMP		: tehub_dumpCCValues("from dump_tehub command"); return 1;
-		case TEHUB_CC_REBOOT	: reboot_teensy();
-		case TEHUB_CC_RESET		: display(0,"TEHUB_RESET not implemented yet",0); return 1;
+		case AUDIO_CC_DUMP		: audio_dumpCCValues("from dump_audio command"); return 1;
+		case AUDIO_CC_REBOOT	: reboot_teensy();
+		case AUDIO_CC_RESET		: display(0,"AUDIO_RESET not implemented yet",0); return 1;
 
-		case TEHUB_CC_MIX_IN	: return setMixLevel(MIX_CHANNEL_IN,   val);
-		case TEHUB_CC_MIX_USB	: return setMixLevel(MIX_CHANNEL_USB,  val);
-		case TEHUB_CC_MIX_LOOP	: return setMixLevel(MIX_CHANNEL_LOOP, val);
-		case TEHUB_CC_MIX_AUX	: return setMixLevel(MIX_CHANNEL_AUX,  val);
+		case AUDIO_CC_MIX_IN	: return setMixLevel(MIX_CHANNEL_IN,   val);
+		case AUDIO_CC_MIX_USB	: return setMixLevel(MIX_CHANNEL_USB,  val);
+		case AUDIO_CC_MIX_LOOP	: return setMixLevel(MIX_CHANNEL_LOOP, val);
+		case AUDIO_CC_MIX_AUX	: return setMixLevel(MIX_CHANNEL_AUX,  val);
 	}
 
 	my_error("unknown dispatchCC(%d,%d)",cc,val);
@@ -456,7 +457,7 @@ bool tehub_dispatchCC(uint8_t cc, uint8_t val)
 
 
 #define isCC(byte)				(((byte) & 0x0f) == MIDI_TYPE_CC)
-#define knownCable(byte)		(((byte >> 4) == SGTL5000_CABLE) || ((byte >> 4) == TEHUB_CABLE))
+#define knownCable(byte)		(((byte >> 4) == SGTL5000_CABLE) || ((byte >> 4) == AUDIO_CABLE))
 #define knownCableCC(byte)		(isCC(byte) && knownCable(byte))
 
 
@@ -487,7 +488,7 @@ void handleSerialMidi()
 			}
 			else
 			{
-				my_error("TE3_hub: unexpected cable/type in MIDI byte0(0x%02x)",byte);
+				my_error("TE3_audio: unexpected cable/type in MIDI byte0(0x%02x)",byte);
 			}
 		}
 		else
@@ -505,16 +506,16 @@ void handleSerialMidi()
 				{
 					sgtl5000.dispatchCC(msg.param1(),msg.param2());
 				}
-				else if (msg.cable() == TEHUB_CABLE &&
-						 msg.channel() == TEHUB_CHANNEL &&
+				else if (msg.cable() == AUDIO_CABLE &&
+						 msg.channel() == AUDIO_CHANNEL &&
 						 msg.type() == MIDI_TYPE_CC)
 				{
-					tehub_dispatchCC(msg.param1(),msg.param2());
+					audio_dispatchCC(msg.param1(),msg.param2());
 				}
 
 				else
 				{
-					my_error("TE3_hub: unexpected serial midi(0x%08x)",msg32);
+					my_error("TE3_audio: unexpected serial midi(0x%08x)",msg32);
 				}
 
 				len = 0;
@@ -524,4 +525,4 @@ void handleSerialMidi()
 }	// handleSerialMidi()
 
 
-// end of TE3_hub.ino
+// end of TE3_audio.ino

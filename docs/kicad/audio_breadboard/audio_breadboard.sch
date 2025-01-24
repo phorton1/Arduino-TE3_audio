@@ -202,5 +202,5 @@ rPi PINS
 Text Notes 1550 6750 0    50   ~ 0
 It is definitely a bad idea \nto try to run a USB host\non this "USB Soundcard"
 Text Notes 3400 6700 0    50   ~ 0
-Likewise, it is probably a bad\nidea fot the TE_Hub to have\nany responsibility for talking\nto the Looper, but if it did,\nit would be through Serial3
+Likewise, it is probably a bad\nidea fot the TE_audio device to have\nany responsibility for talking\nto the Looper, but if it did,\nit would be through Serial3
 $EndSCHEMATC
