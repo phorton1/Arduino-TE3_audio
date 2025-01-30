@@ -19,12 +19,12 @@ struct usb_string_descriptor_struct usb_string_manufacturer_name = {
 struct usb_string_descriptor_struct usb_string_product_name = {
 	2 + 18 * 2,
 	3,
-	{'T','E','_','H','U','B', 0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0}		// allow 30
+	{'T','E','_','A','U','D','I','O',  0,0,0,0, 0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0}		// allow 30
 };
 struct usb_string_descriptor_struct usb_string_serial_number = {
 	2 + 4 * 2,
 	3,
-	{'T','E','H', 0,0,0, 0,0,0,0,0,0,0,0 }			// allow 14
+	{'T','E','3','A', 0,0, 0,0,0,0,0,0,0,0 }			// allow 14
 };
 
 
@@ -36,12 +36,12 @@ struct usb_string_descriptor_struct usb_string_serial_number = {
     struct usb_string_descriptor_struct usb_string_midi_port_in##a##b = { \
         2 + 20 * 2,  \
         3,           \
-        {'T','E','_','H','U','B','_','I','N',		DIGIT_TO_CHAR(a),DIGIT_TO_CHAR(b), 0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0} \
+        {'T','E','_','A','U','D','I','O','_','I','N',		DIGIT_TO_CHAR(a),DIGIT_TO_CHAR(b), 0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0} \
     }; \
     struct usb_string_descriptor_struct usb_string_midi_port_out##a##b = { \
         2 + 21 * 2,  \
         3,           \
-        {'T','E','_','H','U','B','_','O','U','T', 	DIGIT_TO_CHAR(a),DIGIT_TO_CHAR(b), 0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0} \
+        {'T','E','_','A','U','D','I','O','_','O','U','T', 	DIGIT_TO_CHAR(a),DIGIT_TO_CHAR(b),  0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0} \
     }
 
 MAKE_MIDI_PORT_DESC(0,1);
@@ -67,7 +67,7 @@ void setUSBSerialNum()
 	// in the defined structure
 {
 	extern struct usb_string_descriptor_struct usb_string_serial_number_default;
-	int len = 3;
+	int len = 4; 	// TE3A
 	memcpy(&usb_string_serial_number.wString[len],usb_string_serial_number_default.wString,10 * sizeof(uint16_t));
 	usb_string_serial_number.bLength = 2 + (len + 10) * 2;
 }

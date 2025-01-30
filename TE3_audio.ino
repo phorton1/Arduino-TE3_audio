@@ -187,10 +187,23 @@ bool setMixLevel(uint8_t channel, uint8_t val)
 //=================================================
 // setup()
 //=================================================
+// I am still using my copied _usb.c and _usbdesc.c, although
+// I *could* get away with just using the official _usbNames.c
+// approach.  My _usb.c was introduced to allow me to change the
+// device descriptors via preferences, mostly to spoof the FTP,
+// by deferring Paul's static usb_init() call to a runtime call.
+//
+// The only thing it actually does in this incarnation is to
+// copy the actual teensy serial number into my serial number
+// descriptor before initializing the USB devie, so that each
+// device has a unique TE3xxxx serial number.
 
 extern "C" {
-    extern void my_usb_init();          	 // in usb.c
+    extern void my_usb_init();          	// in usb.c
+    // extern void setFTPDescriptors();    	// commented out in _usbNames.c
+	extern const char *getUSBSerialNum();	// in _usbNames.c
 }
+
 
 void audio_dumpCCValues(const char *where);
 	// forward
@@ -240,6 +253,8 @@ void setup()
 		delay(500);
 		display(0,"TE3_audio.ino setup() started on USB_SERIAL_PORT",0);
 	#endif
+
+	display(0,"TE3_audio serial_number = %s",getUSBSerialNum());
 
 	//-----------------------------------
 	// initialize the audio system

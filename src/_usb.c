@@ -121,6 +121,10 @@ FLASHMEM void usb_init(void)
 {
 }
 
+extern void setUSBSerialNum();
+	// prh 2025-01-30 in usbNames.c
+
+
 FLASHMEM void my_usb_init(void)
 {
 
@@ -133,6 +137,8 @@ FLASHMEM void my_usb_init(void)
 		| PMU_REG_3P0_ENABLE_LINREG;
 
 	usb_init_serialnumber();
+	setUSBSerialNum();
+		// prh 2025-01-30
 
 	// assume PLL3 is already running - already done by usb_pll_start() in main.c
 
