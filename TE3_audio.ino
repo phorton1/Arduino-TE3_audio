@@ -83,8 +83,13 @@
 	// to the laptop for unusual debugging.
 
 #define PIN_AUDIO_ALIVE	13
-	// Set this to a pin to flash a heartbeat during loop()
-	// The teensy4.x onboard LED is pin 13
+	// Onboard Heartbeat LED
+#define PIN_AUDIO_BUSY  4
+	// Onboard Heartbeat LED + Serial Data Busy indicator
+
+static bool flash_on = 0;
+static uint32_t flash_last = 0;
+static uint32_t audio_busy_led_time = 0;
 
 
 //===============================================================================
@@ -211,10 +216,17 @@ void audio_dumpCCValues(const char *where);
 
 void setup()
 {
-	#if PIN_AUDIO_ALIVE
-		pinMode(PIN_AUDIO_ALIVE,OUTPUT);
-		digitalWrite(PIN_AUDIO_ALIVE,1);
-	#endif
+	pinMode(PIN_AUDIO_ALIVE,OUTPUT);
+	pinMode(PIN_AUDIO_BUSY,OUTPUT);
+	digitalWrite(PIN_AUDIO_ALIVE,1);
+	digitalWrite(PIN_AUDIO_BUSY,1);
+
+	for (int i=0; i<23; i++)
+	{
+		digitalWrite(PIN_AUDIO_ALIVE,i&1);
+		digitalWrite(PIN_AUDIO_BUSY,i&1);
+		delay(40);
+	}
 
 	//-----------------------------------------
 	// initialize MIDI_SERIAL_PORT
@@ -239,9 +251,8 @@ void setup()
     delay(500);
 	my_usb_init();
 
-	#if PIN_AUDIO_ALIVE
-		digitalWrite(PIN_AUDIO_ALIVE,0);
-	#endif
+	digitalWrite(PIN_AUDIO_ALIVE,0);
+	digitalWrite(PIN_AUDIO_BUSY,0);
 
 	//---------------------------------
 	// initialize USB_SERIAL_PORT
@@ -260,9 +271,8 @@ void setup()
 	// initialize the audio system
 	//-----------------------------------
 
-	#if PIN_AUDIO_ALIVE
-		digitalWrite(PIN_AUDIO_ALIVE,1);
-	#endif
+	digitalWrite(PIN_AUDIO_ALIVE,1);
+	digitalWrite(PIN_AUDIO_BUSY,1);
 
 	delay(500);
 	display(0,"initializing audio system",0);
@@ -286,9 +296,8 @@ void setup()
 	// setup finished
 	//--------------------------------
 
-	#if PIN_AUDIO_ALIVE
-		digitalWrite(PIN_AUDIO_ALIVE,0);
-	#endif
+	digitalWrite(PIN_AUDIO_ALIVE,0);
+	digitalWrite(PIN_AUDIO_BUSY,0);
 
 	audio_dumpCCValues("from dump_audio command"); 
 
@@ -342,17 +351,15 @@ void loop()
 		}
 	#endif
 
-
-	#if PIN_AUDIO_ALIVE
-		static bool flash_on = 0;
-		static uint32_t flash_last = 0;
-		if (millis() - flash_last > 1000)
-		{
-			flash_last = millis();
-			flash_on = !flash_on;
-			digitalWrite(PIN_AUDIO_ALIVE,flash_on);
-	    }
-	#endif // PIN_AUDIO_ALIVE
+	uint32_t led_delay = flash_on ? 20 : 1980;
+	uint32_t flash_now = millis();
+	if (flash_now - flash_last > led_delay)
+	{
+		flash_last = flash_now;
+		flash_on = !flash_on;
+		digitalWrite(PIN_AUDIO_ALIVE,flash_on);
+		digitalWrite(PIN_AUDIO_BUSY,flash_on);
+	}
 
 	//-----------------------------
 	// set SGTL5000 from USB
@@ -405,6 +412,21 @@ void reboot_teensy()
 
 #define dbg_sm  0
 #define dbg_dispatch	0
+
+static void setAudioBusy()
+{
+	digitalWrite(PIN_AUDIO_BUSY,1);
+	audio_busy_led_time = millis();
+}
+static void clearAudioBusy()
+{
+	if (!flash_on && audio_busy_led_time && millis() - audio_busy_led_time > 200)
+	{
+		audio_busy_led_time = 0;
+		digitalWrite(PIN_AUDIO_BUSY,0);
+	}
+}
+
 
 int audio_getCC(uint8_t cc)
 {
@@ -494,6 +516,7 @@ void handleSerialMidi()
 	while (MIDI_SERIAL_PORT.available())
 	{
 		uint8_t byte = MIDI_SERIAL_PORT.read();
+		setAudioBusy();
 
 		if (len == 0)
 		{
@@ -534,9 +557,13 @@ void handleSerialMidi()
 				}
 
 				len = 0;
+				setAudioBusy();
 			}
 		}
 	}
+
+	clearAudioBusy();
+
 }	// handleSerialMidi()
 
 
