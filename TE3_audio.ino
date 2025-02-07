@@ -84,7 +84,7 @@
 
 #define PIN_AUDIO_ALIVE	13
 	// Onboard Heartbeat LED
-#define PIN_AUDIO_BUSY  3
+#define PIN_AUDIO_BUSY  2
 	// Onboard Heartbeat LED + Serial Data Busy indicator
 
 static bool flash_on = 0;
