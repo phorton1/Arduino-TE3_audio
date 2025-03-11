@@ -70,6 +70,54 @@ use the logic_analyzer, though I might be able to get away
 with the BCLK pin with a big enough window.
 
 
+## Results of hooking up the logic analyzer
+
+After adding a TEST_CONFIGURATION define to TE3_audio.ino that
+generates a sine wave and sends it directly to the Looper,
+bypassing the need for the iPad and USB audio io to AudioBus,
+I hooked up the logic analyzer and quickly realized that
+the "channel width" of the i2s data is 32, not 16 bits, and
+that, after setting that in the call to bcm_pcm.static_init()
+in output_teensyQuad.cpp I started getting data (and presumably
+sound) into and out of the 2nd Looper channel.
+
+
+Much clarity has been achieved.
+
+
+(a) I suspect that my implementation of SGTL5000 is setting
+	the channel width to 32 whereas Paul's may set it to 16,
+	and perhaps the '15' parameter to bcm_pcm.static_init()
+	was correct.
+
+(b) I think the idea that the Looper audio.cpp currently
+    has many defines for various audio configurations is
+	misleading.  The CS42448 is used in Looper1/2, the
+	WM8731 *might* be used in a pinch, but otherwise, there
+	is ONLY TE3.
+
+(c) I think _prh/audio/input|output_teensyQuad should be
+	renamed and/or perhaps eliminated.  It *might* be
+	feasable (and better) to use the "standard" i2s devices,
+	and call bcm_pcm.static_init() and bcm_pcm.start() DIRECTLY
+	from Looper::audio.cpp than to imply that there is a
+	meaningful pair of devices called a teensyQuad.
+
+	At best, if teesyQuad devices continue to exist in _prh/audio,
+	then they should actually be paired with the SGTL5000 control
+	device and turn the (dupont wire connected RevB or RevD) audioshield
+	into a "true" i2s_quad device ALA how Paul does it with his
+	SGTL5000 device.
+
+(d) I think I need to review my SGTL5000 implementation in some
+	detail to see if it is the "culprit" in this issue.
+
+I am now going to put the box back together, complete the initial
+audio testing (hopefully) and check everything in before attempting
+to clean up any of this code.
+
+
+
 
 
 

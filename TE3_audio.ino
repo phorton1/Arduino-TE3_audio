@@ -67,7 +67,18 @@
 #include "src/sgtl5000.h"
 
 #define	dbg_audio	0
-#define dbg_sine	1
+
+
+
+#define TEST_CONFIGURATION		0
+	// Whatever I need at the current time.
+	// As of this writing, the Looper is not getting anytning on the right channel,
+	// and the PCB's are out of the box on my desk.  I am using this to generate
+	// a sine wave instead of using the i2s_in(0,1) or MONO_GUITAR_INPUT to generate
+	// a signal and send it directly to the Looper on i2s_out(2,3), entirely bypassing
+	// the USB in-out to the iPad.
+
+
 
 #define MONO_GUITAR_INPUT		1
 	// if this is defined, i2s_in0 will be used as a
@@ -75,13 +86,6 @@
 #define MONO_GUITAR_I2S_IN		0
 	// which of the two input ports to use for
 	// the mono guitar channel
-
-#define TEST_RPI_WITHOUT_IPAD	1
-	// if this is defined, the input i2s will be sent directly to the Looper
-	// instead of the USB needing to be connected to the iPad, and the
-	// default USB volume will be 0, whereas the default Loop volume
-	// will be 100.
-
 
 #define USB_SERIAL_PORT			Serial
 #define MIDI_SERIAL_PORT		Serial1
@@ -149,18 +153,15 @@ static uint32_t audio_busy_led_time = 0;
 #define MIX_CHANNEL_LOOP  		2		// the sound returned from the rPi Looper
 #define MIX_CHANNEL_AUX			3		// if WITH_SINE, monitor the sine directly
 
-
-#if TEST_RPI_WITHOUT_IPAD
-	#define DEFAULT_VOLUME_IN		0		// output the raw LINE_IN signal
-	#define DEFAULT_VOLUME_USB		0		// output returned USB (production=0)
-	#define DEFAULT_VOLUME_LOOP		100		// output the Looper (production=100)
-	#define DEFAULT_VOLUME_AUX		0		// unused
+#define DEFAULT_VOLUME_IN		0		// output the raw LINE_IN signal
+#define DEFAULT_VOLUME_USB		0		// output returned USB (production=0)
+#if TEST_CONFIGURATION
+	#define DEFAULT_VOLUME_LOOP		0		// turn the Looper up if you want to hear it
 #else
-	#define DEFAULT_VOLUME_IN		0		// output the raw LINE_IN signal
-	#define DEFAULT_VOLUME_USB		100		// output returned USB (production=0)
-	#define DEFAULT_VOLUME_LOOP		0		// output the Looper (production=100)
-	#define DEFAULT_VOLUME_AUX		0		// unused
+	#define DEFAULT_VOLUME_LOOP		100		// output the Looper (production=100)
 #endif
+
+#define DEFAULT_VOLUME_AUX		0		// unused
 
 
 SGTL5000 sgtl5000;
@@ -172,44 +173,47 @@ AudioOutputUSB  	usb_out;
 AudioMixer4			mixer_L;
 AudioMixer4			mixer_R;
 
-#if MONO_GUITAR_INPUT
-	AudioConnection	c_i1(i2s_in,  MONO_GUITAR_I2S_IN, mixer_L, MIX_CHANNEL_IN);			// SGTL5000 LINE_IN --> out_mixer(0)
-	AudioConnection	c_i2(i2s_in,  MONO_GUITAR_I2S_IN, mixer_R, MIX_CHANNEL_IN);
-	AudioConnection c_in1(i2s_in, MONO_GUITAR_I2S_IN, usb_out, 0);						// SGTL5000 LINE_IN --> USB_out
-	AudioConnection c_in2(i2s_in, MONO_GUITAR_I2S_IN, usb_out, 1);
-	AudioConnection	c_ul(usb_in,  0, mixer_L, MIX_CHANNEL_USB);							// USB_in --> out_mixer(1)
-	AudioConnection	c_ur(usb_in,  1, mixer_R, MIX_CHANNEL_USB);
-	#if TEST_RPI_WITHOUT_IPAD
-		AudioConnection c_q1(i2s_in,  MONO_GUITAR_I2S_IN, i2s_out, 2);					// Test i2s_in goes directly --> Looper
-		AudioConnection c_q2(i2s_in,  MONO_GUITAR_I2S_IN, i2s_out, 3);
-	#else
-		AudioConnection c_q1(usb_in,  0, i2s_out, 2);									// USB_in --> Looper
-		AudioConnection c_q2(usb_in,  1, i2s_out, 3);
-	#endif
-	AudioConnection c_q3(i2s_in,  2, mixer_L, MIX_CHANNEL_LOOP);						// Looper --> out_mixer(2)
-	AudioConnection c_q4(i2s_in,  3, mixer_R, MIX_CHANNEL_LOOP);
-	AudioConnection c_o1(mixer_L, 0, i2s_out, 0);										// out_mixers --> SGTL5000
-	AudioConnection c_o2(mixer_R, 0, i2s_out, 1);
-#else
-	AudioConnection	c_i1(i2s_in,  0, mixer_L, MIX_CHANNEL_IN);			// SGTL5000 LINE_IN --> out_mixer(0)
-	AudioConnection	c_i2(i2s_in,  1, mixer_R, MIX_CHANNEL_IN);
-	AudioConnection c_in1(i2s_in, 0, usb_out, 0);						// SGTL5000 LINE_IN --> USB_out
-	AudioConnection c_in2(i2s_in, 1, usb_out, 1);
-	AudioConnection	c_ul(usb_in,  0, mixer_L, MIX_CHANNEL_USB);			// USB_in --> out_mixer(1)
-	AudioConnection	c_ur(usb_in,  1, mixer_R, MIX_CHANNEL_USB);
-	#if TEST_RPI_WITHOUT_IPAD
-		AudioConnection c_q1(i2s_in,  0, i2s_out, 2);						// Test i2s_in goes directly --> Looper
-		AudioConnection c_q2(i2s_in,  1, i2s_out, 3);
-	#else
-		AudioConnection c_q1(usb_in,  0, i2s_out, 2);						// USB_in --> Looper
-		AudioConnection c_q2(usb_in,  1, i2s_out, 3);
-	#endif
+
+#if TEST_CONFIGURATION
+
+	#define SINE_FREQ				440
+	#define SINE_AMPLITUDE			0.5
+	
+	AudioSynthWaveformSine  sine;
+
+	AudioConnection	c_i1(sine,    0, mixer_L, MIX_CHANNEL_IN);			// sine --> out_mixer(0)
+	AudioConnection	c_i2(sine,    0, mixer_R, MIX_CHANNEL_IN);
+	AudioConnection c_q1(sine,    0, i2s_out, 2);						// sine --> Looper
+	AudioConnection c_q2(sine,    0, i2s_out, 3);
 	AudioConnection c_q3(i2s_in,  2, mixer_L, MIX_CHANNEL_LOOP);		// Looper --> out_mixer(2)
 	AudioConnection c_q4(i2s_in,  3, mixer_R, MIX_CHANNEL_LOOP);
 	AudioConnection c_o1(mixer_L, 0, i2s_out, 0);						// out_mixers --> SGTL5000
 	AudioConnection c_o2(mixer_R, 0, i2s_out, 1);
-#endif
 
+#else
+
+	#if MONO_GUITAR_INPUT
+		AudioConnection	c_i1(i2s_in,  MONO_GUITAR_I2S_IN, mixer_L, MIX_CHANNEL_IN);			// SGTL5000 LINE_IN --> out_mixer(0)
+		AudioConnection	c_i2(i2s_in,  MONO_GUITAR_I2S_IN, mixer_R, MIX_CHANNEL_IN);
+		AudioConnection c_in1(i2s_in, MONO_GUITAR_I2S_IN, usb_out, 0);						// SGTL5000 LINE_IN --> USB_out
+		AudioConnection c_in2(i2s_in, MONO_GUITAR_I2S_IN, usb_out, 1);
+	#else
+		AudioConnection	c_i1(i2s_in,  0, mixer_L, MIX_CHANNEL_IN);							// SGTL5000 LINE_IN --> out_mixer(0)
+		AudioConnection	c_i2(i2s_in,  1, mixer_R, MIX_CHANNEL_IN);
+		AudioConnection c_in1(i2s_in, 0, usb_out, 0);										// SGTL5000 LINE_IN --> USB_out
+		AudioConnection c_in2(i2s_in, 1, usb_out, 1);
+	#endif
+
+	AudioConnection	c_ul(usb_in,  0, mixer_L, MIX_CHANNEL_USB);			// USB_in --> out_mixer(1)
+	AudioConnection	c_ur(usb_in,  1, mixer_R, MIX_CHANNEL_USB);
+	AudioConnection c_q1(usb_in,  0, i2s_out, 2);						// USB_in --> Looper
+	AudioConnection c_q2(usb_in,  1, i2s_out, 3);
+	AudioConnection c_q3(i2s_in,  2, mixer_L, MIX_CHANNEL_LOOP);		// Looper --> out_mixer(2)
+	AudioConnection c_q4(i2s_in,  3, mixer_R, MIX_CHANNEL_LOOP);
+	AudioConnection c_o1(mixer_L, 0, i2s_out, 0);						// out_mixers --> SGTL5000
+	AudioConnection c_o2(mixer_R, 0, i2s_out, 1);
+
+#endif
 
 
 
@@ -240,7 +244,7 @@ bool setMixLevel(uint8_t channel, uint8_t val)
 // DEBUG_AUDIO_LEVELS
 //----------------------------------------------------
 
-#define DEBUG_AUDIO_LEVELS	250
+#define DEBUG_AUDIO_LEVELS	0	// 2000
 	// If set, this is the number of milliseconds
 	// to sample the four input channels using analyze_peak
 	// audio devices.
@@ -256,12 +260,17 @@ bool setMixLevel(uint8_t channel, uint8_t val)
 	AudioAnalyzePeak peak6;
 	AudioAnalyzePeak peak7;
 
-	AudioConnection	cp0(i2s_in,  0, peak0,  0);
-#if MONO_GUITAR_INPUT
+#if TEST_CONFIGURATION
+	AudioConnection	cp0(sine,  0, peak0,  0);
+	AudioConnection	cp1(sine,  0, peak1,  0);
+#elif MONO_GUITAR_INPUT
+	AudioConnection	cp0(i2s_in,  MONO_GUITAR_I2S_IN, peak0,  0);
 	AudioConnection	cp1(i2s_in,  MONO_GUITAR_I2S_IN, peak1,  0);
 #else
+	AudioConnection	cp0(i2s_in,  0, peak0,  0);
 	AudioConnection	cp1(i2s_in,  1, peak1,  0);
 #endif
+
 	AudioConnection	cp2(usb_in,  0, peak2,  0);
 	AudioConnection	cp3(usb_in,  1, peak3,  0);
 	AudioConnection	cp4(i2s_in,  2, peak4,  0);
@@ -383,6 +392,11 @@ void setup()
 
 	delay(500);
 	display(0,"initializing audio system",0);
+
+	#if TEST_CONFIGURATION
+		sine.frequency(SINE_FREQ);
+		sine.amplitude(SINE_AMPLITUDE);
+	#endif
 
 	AudioMemory(100);
 	delay(250);
