@@ -619,8 +619,7 @@ bool audio_dispatchCC(uint8_t cc, uint8_t val)
 
 
 #define isCC(byte)				(((byte) & 0x0f) == MIDI_TYPE_CC)
-#define knownCable(byte)		(((byte >> 4) == SGTL5000_CABLE) || ((byte >> 4) == AUDIO_CABLE))
-#define knownCableCC(byte)		(isCC(byte) && knownCable(byte))
+#define isPort0(byte)			((byte >> 4) == 0)
 
 
 void handleSerialMidi()
@@ -630,13 +629,9 @@ void handleSerialMidi()
 	static uint8_t len = 0;
 
 	// code expects a leading SERIAL_MIDI byte that
-	// has a known cable. The redundant message 'type'
-	// in the leading byte is not checked.
-	//
-	// If an unknown cable is detected, it will report an
-	// error and skip the byte in an attempt to try to
-	// synchronize to the MIDI stream.  Otherwise it buffers
-	// four bytes for handling.
+	// defines a CC on port 0.  If these are not
+	// found, the message will be skipped (and
+	// generate upto four errors before re-syncing)
 
 	while (MIDI_SERIAL_PORT.available())
 	{
@@ -645,7 +640,7 @@ void handleSerialMidi()
 
 		if (len == 0)
 		{
-			if (knownCableCC(byte))
+			if (isCC(byte) && isPort0(byte))
 			{
 				buf[len++] = byte;
 			}
@@ -663,15 +658,11 @@ void handleSerialMidi()
 
 				msgUnion msg(msg32);
 
-				if (msg.cable() == SGTL5000_CABLE &&
-					msg.channel() == SGTL5000_CHANNEL &&
-					msg.type() == MIDI_TYPE_CC)
+				if (msg.channel() == SGTL5000_CHANNEL)
 				{
 					sgtl5000.dispatchCC(msg.param1(),msg.param2());
 				}
-				else if (msg.cable() == AUDIO_CABLE &&
-						 msg.channel() == AUDIO_CHANNEL &&
-						 msg.type() == MIDI_TYPE_CC)
+				else if (msg.channel() == AUDIO_CHANNEL)
 				{
 					audio_dispatchCC(msg.param1(),msg.param2());
 				}
